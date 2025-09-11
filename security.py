@@ -14,10 +14,6 @@ def generate_encryption_key():
     2. Store it securely (environment variable, key management service, etc.)
     3. Never hardcode it in the source code
     """
-    # WARNING: This is a default key for development only!
-    # In production, use a secure method to generate and store this key
-    default_key = b"your_32_byte_encryption_key_here_your_32_byte_encryption_key_here"
-    
     # Try to get key from environment variable
     env_key = os.getenv("ENCRYPTION_KEY")
     if env_key:
@@ -27,8 +23,8 @@ def generate_encryption_key():
         except Exception:
             pass
     
-    # Fallback to default (NOT secure for production)
-    return base64.urlsafe_b64encode(default_key)[:32]
+    # Generate a proper Fernet key
+    return Fernet.generate_key()
 
 # Generate the encryption key
 ENCRYPTION_KEY = generate_encryption_key()

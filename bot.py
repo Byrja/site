@@ -77,7 +77,8 @@ def main_menu():
 # Function to delete user message for privacy
 def delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int) -> None:
     try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        import asyncio
+        asyncio.create_task(context.bot.delete_message(chat_id=chat_id, message_id=message_id))
     except Exception as e:
         logger.warning(f"Could not delete message: {e}")
 
@@ -89,7 +90,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     # Delete user's message for privacy
     if update.message:
-        await delete_message(context, update.effective_chat.id, update.message.message_id)
+        delete_message(context, update.effective_chat.id, update.message.message_id)
     
     if user_id not in user_data:
         user_data[user_id] = {
@@ -124,7 +125,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_data = load_user_data()
     
     # Delete user's message for privacy
-    await delete_message(context, update.effective_chat.id, update.message.message_id)
+    delete_message(context, update.effective_chat.id, update.message.message_id)
     
     # Handle different states
     if user_id in user_states:
@@ -222,22 +223,24 @@ def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     # Check if API keys are set
     if not user_data.get(user_id, {}).get('bybit_api_key') or not user_data.get(user_id, {}).get('bybit_api_secret'):
-        update.message.reply_text(
+        import asyncio
+        asyncio.create_task(update.message.reply_text(
             'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, перейдите в настройки.',
             reply_markup=reply_markup
-        )
+        ))
         return
     
     # Here we would normally fetch data from Bybit API
     # For now, let's show a placeholder message
-    update.message.reply_text(
+    import asyncio
+    asyncio.create_task(update.message.reply_text(
         '📈 Активные сделки:\n\n'
         'BTC/USDT: +2.5% ($120)\n'
         'ETH/USDT: -1.2% (-$45)\n\n'
         'Общий PnL: +$75\n\n'
         'Выберите действие:',
         reply_markup=reply_markup
-    )
+    ))
 
 # Handle crypto submenu
 def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, selection: str) -> None:
@@ -753,7 +756,8 @@ def handle_shopping_list_menu(update: Update, context: ContextTypes.DEFAULT_TYPE
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
-    update.message.reply_text('🛒 Список покупок:\nВыберите категорию:', reply_markup=reply_markup)
+    import asyncio
+    asyncio.create_task(update.message.reply_text('🛒 Список покупок:\nВыберите категорию:', reply_markup=reply_markup))
 
 # Handle shopping category
 def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str) -> None:
@@ -860,7 +864,7 @@ def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT
     handle_shopping_category(update, context, category)
 
 # Main function
-async def main() -> None:
+def main() -> None:
     # Set console window title
     try:
         import ctypes
@@ -884,6 +888,8 @@ async def main() -> None:
         return
     
     try:
+        import asyncio
+        
         # Create the Application and pass it your bot's token.
         application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         
@@ -895,7 +901,7 @@ async def main() -> None:
         print("Бот успешно запущен! Для остановки нажмите Ctrl+C")
         
         # Start the Bot
-        await application.run_polling()
+        asyncio.run(application.run_polling())
         
     except Exception as e:
         logger.error(f"Failed to start bot: {e}")
@@ -907,5 +913,4 @@ async def main() -> None:
         return
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()
