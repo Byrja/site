@@ -69,7 +69,7 @@ def save_user_states(states):
 # Main menu
 def main_menu():
     keyboard = [
-        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилка', callback_data='piggy_bank_menu')],
+        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu')],
         [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -111,7 +111,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     # Create a comprehensive menu with all functionality
     keyboard = [
-        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилка', callback_data='piggy_bank_menu')],
+        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu')],
         [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
         [InlineKeyboardButton('⚙️ Настройки', callback_data='settings_menu'), InlineKeyboardButton('ℹ️ Помощь', callback_data='help_menu')]
     ]
@@ -134,13 +134,28 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     # Create a comprehensive menu with all functionality
     keyboard = [
-        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилка', callback_data='piggy_bank_menu')],
+        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu')],
         [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
         [InlineKeyboardButton('⚙️ Настройки', callback_data='settings_menu'), InlineKeyboardButton('ℹ️ Помощь', callback_data='help_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
+        'Главное меню:',
+        reply_markup=reply_markup
+    )
+
+# Callback versions of menu functions
+async def show_main_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Create a comprehensive menu with all functionality
+    keyboard = [
+        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu')],
+        [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
+        [InlineKeyboardButton('⚙️ Настройки', callback_data='settings_menu'), InlineKeyboardButton('ℹ️ Помощь', callback_data='help_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
         'Главное меню:',
         reply_markup=reply_markup
     )
@@ -171,10 +186,10 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         # Handle piggy bank creation
         elif state == 'CREATING_PIGGY_NAME':
-            handle_piggy_name_input(update, context)
+            await handle_piggy_name_input(update, context)
             return
         elif state.startswith('CREATING_PIGGY_TARGET_'):
-            handle_piggy_target_input(update, context)
+            await handle_piggy_target_input(update, context)
             return
         # Handle deposit/withdraw
         elif state.startswith('DEPOSITING_') or state.startswith('WITHDRAWING_'):
@@ -203,25 +218,25 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     
     # Handle menu selections
     if text == '💰 Крипта':
-        handle_crypto_menu(update, context)
-    elif text == '🏦 Копилка':
-        handle_piggy_bank_menu(update, context)
+        await handle_crypto_menu(update, context)
+    elif text in [' Мос Копилка', '🏦 Копилки']:  # Handle variations
+        await handle_piggy_bank_menu(update, context)
     elif text == '🛒 Список покупок':
-        handle_shopping_list_menu(update, context)
+        await handle_shopping_list_menu(update, context)
     elif text == '🏠 Главная':
         await start(update, context)  # Make this async call
     elif text.startswith(' Мос '):
         # Handle piggy bank selection
         piggy_name = text[2:].strip()
-        handle_piggy_bank_actions(update, context, piggy_name)
+        await handle_piggy_bank_actions(update, context, piggy_name)
     elif text in ['📊 Статистика', '💰 Баланс', '⚙️ Настройки']:
-        handle_crypto_submenu(update, context, text)
-    elif text in ['🍎 Продукты', '💊 Аптека', '📦 Остальное']:
-        handle_shopping_category(update, context, text)  # Keep emoji for proper matching
+        await handle_crypto_submenu(update, context, text)
+    elif text in ['🍎 Продукты', '杨欢ка', '📦 Остальное']:
+        await handle_shopping_category(update, context, text)  # Keep emoji for proper matching
     elif text == '➕ Создать копилку':
-        handle_create_piggy_bank(update, context)
+        await handle_create_piggy_bank(update, context)
     elif text == '🔑 Ввести API ключи':
-        handle_enter_api_keys(update, context)
+        await handle_enter_api_keys(update, context)
     elif text == '➕ Добавить':
         # This will be handled by state
         pass
@@ -244,20 +259,20 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         handle_edit_piggy_name(update, context)
     elif text.startswith('✏️ Изменить сумму'):
         handle_edit_piggy_target(update, context)
-    elif text == ' mos Копилка' or text == ' Мос Копилка':  # Handle both variations
-        handle_piggy_bank_menu(update, context)
+    elif text in [' mos Копилка', ' Мос Копилка', '🏦 Копилки']:  # Handle all variations
+        await handle_piggy_bank_menu(update, context)
     elif text == ' mos Список покупок' or text == '🛒 Список покупок':  # Handle both variations
-        handle_shopping_list_menu(update, context)
+        await handle_shopping_list_menu(update, context)
     elif text == '⚙️ Настройки':  # Explicitly handle settings button
         handle_settings_menu(update, context)
     elif text == 'ℹ️ Помощь':
-        handle_help_menu(update, context)
+        await handle_help_menu(update, context)
     else:
         # For any other text, show main menu
         await show_main_menu(update, context)
 
 # Handle settings menu
-def handle_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -271,7 +286,7 @@ def handle_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     if user_data.get(user_id, {}).get('bybit_api_key'):
         api_info = f"API Key установлен: {user_data[user_id]['bybit_api_key'][:5]}...{user_data[user_id]['bybit_api_key'][-5:]}"
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f'⚙️ Настройки бота:\n\n'
         f'{api_info}\n\n'
         f'Выберите действие:',
@@ -279,7 +294,7 @@ def handle_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 # Handle settings menu callback
-def handle_settings_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_settings_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(query.from_user.id)
     user_data = load_user_data()
     
@@ -293,7 +308,7 @@ def handle_settings_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> 
     if user_data.get(user_id, {}).get('bybit_api_key'):
         api_info = f"API Key установлен: {user_data[user_id]['bybit_api_key'][:5]}...{user_data[user_id]['bybit_api_key'][-5:]}"
     
-    query.edit_message_text(
+    await query.edit_message_text(
         f'⚙️ Настройки бота:\n\n'
         f'{api_info}\n\n'
         f'Выберите действие:',
@@ -301,7 +316,7 @@ def handle_settings_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> 
     )
 
 # Handle help menu
-def handle_help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
     ]
@@ -310,20 +325,20 @@ def handle_help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     help_text = (
         'ℹ️ Помощь по боту:\n\n'
         '💰 Крипта - управление криптовалютными активами (требует API ключи Bybit)\n'
-        '🏦 Копилка - создание и управление финансовыми копилками\n'
+        '🏦 Копилки - создание и управление финансовыми копилками\n'
         '🛒 Список покупок - ведение списков покупок по категориям\n'
         '⚙️ Настройки - настройка API ключей и других параметров\n\n'
         'Для работы с криптовалютными функциями необходимо установить API ключи от Bybit '
         'в разделе настроек.'
     )
     
-    update.message.reply_text(
+    await update.message.reply_text(
         help_text,
         reply_markup=reply_markup
     )
 
 # Handle help menu callback
-def handle_help_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_help_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
     ]
@@ -332,20 +347,20 @@ def handle_help_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None
     help_text = (
         'ℹ️ Помощь по боту:\n\n'
         '💰 Крипта - управление криптовалютными активами (требует API ключи Bybit)\n'
-        '🏦 Копилка - создание и управление финансовыми копилками\n'
+        '🏦 Копилки - создание и управление финансовыми копилками\n'
         '🛒 Список покупок - ведение списков покупок по категориям\n'
         '⚙️ Настройки - настройка API ключей и других параметров\n\n'
         'Для работы с криптовалютными функциями необходимо установить API ключи от Bybit '
         'в разделе настроек.'
     )
     
-    query.edit_message_text(
+    await query.edit_message_text(
         help_text,
         reply_markup=reply_markup
     )
 
 # Handle crypto menu
-def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -357,7 +372,7 @@ def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        update.message.reply_text(
+        await update.message.reply_text(
             'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, введите ваши API ключи:',
             reply_markup=reply_markup
         )
@@ -372,7 +387,7 @@ def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     # Here we would normally fetch data from Bybit API
     # For now, let's show a placeholder message
-    update.message.reply_text(
+    await update.message.reply_text(
         '📈 Активные сделки:\n\n'
         'BTC/USDT: +2.5% ($120)\n'
         'ETH/USDT: -1.2% (-$45)\n\n'
@@ -382,7 +397,7 @@ def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 # Handle crypto menu callback
-def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(query.from_user.id)
     user_data = load_user_data()
     
@@ -394,7 +409,7 @@ def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> No
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        query.edit_message_text(
+        await query.edit_message_text(
             'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, введите ваши API ключи:',
             reply_markup=reply_markup
         )
@@ -409,7 +424,7 @@ def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> No
     
     # Here we would normally fetch data from Bybit API
     # For now, let's show a placeholder message
-    query.edit_message_text(
+    await query.edit_message_text(
         '📈 Активные сделки:\n\n'
         'BTC/USDT: +2.5% ($120)\n'
         'ETH/USDT: -1.2% (-$45)\n\n'
@@ -419,7 +434,7 @@ def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 # Handle crypto submenu
-def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, selection: str) -> None:
+async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, selection: str) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -431,11 +446,11 @@ def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, se
             [{'text': '🏠 Главная'}]
         ]
         reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        update.message.reply_text('Выберите период статистики:', reply_markup=reply_markup)
+        await update.message.reply_text('Выберите период статистики:', reply_markup=reply_markup)
         
     elif selection == '💰 Баланс':
         # Show balance
-        update.message.reply_text(
+        await update.message.reply_text(
             '💰 Баланс кошелька:\n\n'
             'BTC: 0.0025 (≈ $150)\n'
             'ETH: 0.5 (≈ $1,200)\n'
@@ -459,13 +474,13 @@ def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, se
         if user_data.get(user_id, {}).get('bybit_api_key'):
             api_info = f"\nAPI Key: {user_data[user_id]['bybit_api_key'][:5]}...{user_data[user_id]['bybit_api_key'][-5:]}"
         
-        update.message.reply_text(
+        await update.message.reply_text(
             f'⚙️ Настройки Bybit:{api_info}\n\nВыберите действие:',
             reply_markup=reply_markup
         )
 
 # Handle enter API keys
-def handle_enter_api_keys(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_enter_api_keys(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
@@ -477,13 +492,13 @@ def handle_enter_api_keys(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         'Введите ваш API ключ Bybit:',
         reply_markup=reply_markup
     )
 
 # Handle enter API keys callback
-def handle_enter_api_keys_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_enter_api_keys_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(query.from_user.id)
     user_states = load_user_states()
     
@@ -495,7 +510,7 @@ def handle_enter_api_keys_callback(query, context: ContextTypes.DEFAULT_TYPE) ->
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    query.edit_message_text(
+    await query.edit_message_text(
         'Введите ваш API ключ Bybit:',
         reply_markup=reply_markup
     )
@@ -570,7 +585,7 @@ def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
 
 # Piggy bank section
-def handle_piggy_bank_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_piggy_bank_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -581,18 +596,18 @@ def handle_piggy_bank_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     # Add existing piggy banks
     if user_id in user_data and user_data[user_id]['piggy_banks']:
         for name in user_data[user_id]['piggy_banks']:
-            keyboard.append([InlineKeyboardButton(f' Мос {name}', callback_data=f'piggy_bank_{name}')])
+            keyboard.append([InlineKeyboardButton(f'💰 {name}', callback_data=f'piggy_bank_{name}')])
     
     keyboard.append([InlineKeyboardButton('🏠 Главная', callback_data='main_menu')])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if not user_data.get(user_id, {}).get('piggy_banks'):
-        update.message.reply_text('🏠 Раздел копилки:\nУ вас пока нет копилок. Создайте первую копилку!', reply_markup=reply_markup)
+        await update.message.reply_text('🏦 Раздел копилок:\nУ вас пока нет копилок. Создайте первую копилку!', reply_markup=reply_markup)
     else:
-        update.message.reply_text('🏠 Раздел копилок:', reply_markup=reply_markup)
+        await update.message.reply_text('🏠 Раздел копилок:', reply_markup=reply_markup)
 
 # Piggy bank section callback
-def handle_piggy_bank_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_piggy_bank_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(query.from_user.id)
     user_data = load_user_data()
     
@@ -603,23 +618,23 @@ def handle_piggy_bank_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -
     # Add existing piggy banks
     if user_id in user_data and user_data[user_id]['piggy_banks']:
         for name in user_data[user_id]['piggy_banks']:
-            keyboard.append([InlineKeyboardButton(f' Мос {name}', callback_data=f'piggy_bank_{name}')])
+            keyboard.append([InlineKeyboardButton(f'💰 {name}', callback_data=f'piggy_bank_{name}')])
     
     keyboard.append([InlineKeyboardButton('🏠 Главная', callback_data='main_menu')])
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     if not user_data.get(user_id, {}).get('piggy_banks'):
-        query.edit_message_text('🏠 Раздел копилки:\nУ вас пока нет копилок. Создайте первую копилку!', reply_markup=reply_markup)
+        await query.edit_message_text('🏦 Раздел копилок:\nУ вас пока нет копилок. Создайте первую копилку!', reply_markup=reply_markup)
     else:
-        query.edit_message_text('🏠 Раздел копилок:', reply_markup=reply_markup)
+        await query.edit_message_text('🏠 Раздел копилок:', reply_markup=reply_markup)
 
 # Handle piggy bank actions
-def handle_piggy_bank_actions(update: Update, context: ContextTypes.DEFAULT_TYPE, piggy_name: str) -> None:
+async def handle_piggy_bank_actions(update: Update, context: ContextTypes.DEFAULT_TYPE, piggy_name: str) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
     if user_id not in user_data or piggy_name not in user_data[user_id]['piggy_banks']:
-        update.message.reply_text('Копилка не найдена', reply_markup=main_menu())
+        await update.message.reply_text('Копилка не найдена', reply_markup=main_menu())
         return
     
     piggy = user_data[user_id]['piggy_banks'][piggy_name]
@@ -630,12 +645,12 @@ def handle_piggy_bank_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = [
         [InlineKeyboardButton('💰 Положить', callback_data=f'deposit_{piggy_name}'), InlineKeyboardButton('💸 Снять', callback_data=f'withdraw_{piggy_name}')],
         [InlineKeyboardButton('✏️ Редактировать', callback_data=f'edit_{piggy_name}'), InlineKeyboardButton('❌ Удалить', callback_data=f'delete_{piggy_name}')],
-        [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]  # Use consistent text
+        [InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]  # Use consistent text
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
-        f' Мос Копилка: {piggy_name}\n'
+    await update.message.reply_text(
+        f'💰 Копилка: {piggy_name}\n'
         f'Цель: {target} руб.\n'
         f'Накоплено: {current} руб. ({percentage}%)\n\n'
         f'Выберите действие:',
@@ -648,12 +663,12 @@ def handle_piggy_bank_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
     save_user_states(user_states)
 
 # Handle piggy bank actions callback
-def handle_piggy_bank_actions_callback(query, context: ContextTypes.DEFAULT_TYPE, piggy_name: str) -> None:
+async def handle_piggy_bank_actions_callback(query, context: ContextTypes.DEFAULT_TYPE, piggy_name: str) -> None:
     user_id = str(query.from_user.id)
     user_data = load_user_data()
     
     if user_id not in user_data or piggy_name not in user_data[user_id]['piggy_banks']:
-        query.edit_message_text('Копилка не найдена', reply_markup=main_menu())
+        await query.edit_message_text('Копилка не найдена', reply_markup=main_menu())
         return
     
     piggy = user_data[user_id]['piggy_banks'][piggy_name]
@@ -664,12 +679,12 @@ def handle_piggy_bank_actions_callback(query, context: ContextTypes.DEFAULT_TYPE
     keyboard = [
         [InlineKeyboardButton('💰 Положить', callback_data=f'deposit_{piggy_name}'), InlineKeyboardButton('💸 Снять', callback_data=f'withdraw_{piggy_name}')],
         [InlineKeyboardButton('✏️ Редактировать', callback_data=f'edit_{piggy_name}'), InlineKeyboardButton('❌ Удалить', callback_data=f'delete_{piggy_name}')],
-        [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]  # Use consistent text
+        [InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]  # Use consistent text
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    query.edit_message_text(
-        f' Мос Копилка: {piggy_name}\n'
+    await query.edit_message_text(
+        f'💰 Копилка: {piggy_name}\n'
         f'Цель: {target} руб.\n'
         f'Накоплено: {current} руб. ({percentage}%)\n\n'
         f'Выберите действие:',
@@ -682,14 +697,14 @@ def handle_piggy_bank_actions_callback(query, context: ContextTypes.DEFAULT_TYPE
     save_user_states(user_states)
 
 # Handle create piggy bank
-def handle_create_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_create_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
     user_states[user_id] = 'CREATING_PIGGY_NAME'
     save_user_states(user_states)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         'Введите название для новой копилки:',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
@@ -697,22 +712,22 @@ def handle_create_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 # Handle create piggy bank callback
-def handle_create_piggy_bank_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_create_piggy_bank_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(query.from_user.id)
     user_states = load_user_states()
     
     user_states[user_id] = 'CREATING_PIGGY_NAME'
     save_user_states(user_states)
     
-    query.edit_message_text(
-        'Введите название для новой копилки:',
+    await query.edit_message_text(
+        '📝 Пожалуйста, введите название для новой копилки:\n\nНапример: "Отпуск", "Новый телефон", "Ремонт"',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
         ])
     )
 
 # Handle piggy bank name input
-def handle_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -726,10 +741,10 @@ def handle_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     user_states[user_id] = f'CREATING_PIGGY_TARGET_{piggy_name}'
     save_user_states(user_states)
     
-    update.message.reply_text('Введите целевую сумму для копилки:')
+    await update.message.reply_text('💰 Теперь введите целевую сумму для копилки (в рублях):\n\nНапример: 10000')
 
 # Handle piggy bank target input
-def handle_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -757,16 +772,16 @@ def handle_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         save_user_states(user_states)
         
         keyboard = [
-            [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            [InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        update.message.reply_text(
-            f'✅ Копилка "{piggy_name}" создана!\nЦелевая сумма: {target_amount} руб.',
+        await update.message.reply_text(
+            f'✅ Копилка "{piggy_name}" успешно создана!\nЦелевая сумма: {target_amount} руб.\n\nТеперь вы можете пополнять эту копилку или создать еще одну.',
             reply_markup=reply_markup
         )
     except ValueError:
-        update.message.reply_text('Пожалуйста, введите корректную сумму (число):')
+        update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
 
 # Handle deposit to piggy bank
 def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -776,13 +791,13 @@ def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     
     # Get current piggy bank from state
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('Ошибка: не выбрана копилка')
+        update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('Ошибка: копилка не найдена')
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     user_states[user_id] = f'DEPOSITING_{piggy_name}'
@@ -794,7 +809,192 @@ def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     update.message.reply_text(
-        f'Введите сумму для пополнения копилки "{piggy_name}":',
+        f'💰 Введите сумму для пополнения копилки "{piggy_name}":',
+        reply_markup=reply_markup
+    )
+
+# Handle shopping list menu
+async def handle_shopping_list_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [
+        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('杨欢ка', callback_data='category_Аптека'), InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное')],
+        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text('🛒 Список покупок:\nВыберите категорию:', reply_markup=reply_markup)
+
+# Handle shopping list menu callback
+async def handle_shopping_list_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [
+        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('杨欢ка', callback_data='category_Аптека'), InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное')],
+        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text('🛒 Список покупок:', reply_markup=reply_markup)
+
+# Handle shopping category
+async def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str) -> None:
+    user_id = str(update.effective_user.id)
+    user_data = load_user_data()
+    
+    # Get items for this category (remove emoji if present)
+    clean_category = category[2:] if category.startswith(('🍎', '杨欢ка', '📦')) else category
+    items = user_data.get(user_id, {}).get('shopping_list', {}).get(clean_category, [])
+    
+    # Create keyboard with items and action buttons
+    keyboard = []
+    
+    # Add items
+    for item in items:
+        keyboard.append([InlineKeyboardButton(f'❌ {item}', callback_data=f'delete_item_{clean_category}_{item}')])
+    
+    # Add action buttons
+    keyboard.append([InlineKeyboardButton('➕ Добавить', callback_data=f'add_item_{clean_category}'), InlineKeyboardButton('🗑 Очистить', callback_data=f'clear_category_{clean_category}')])
+    keyboard.append([InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')])  # Use consistent text
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if items:
+        items_text = '\n'.join([f'• {item}' for item in items])
+        message = f'{clean_category}:\n{items_text}'
+    else:
+        message = f'{clean_category}:\nСписок пуст. Добавьте первый элемент!'
+    
+    await update.message.reply_text(
+        f'{message}\n\nВыберите действие:',
+        reply_markup=reply_markup
+    )
+    
+    # Save state for adding items
+    user_states = load_user_states()
+    user_states[user_id] = f'ADDING_ITEM_{clean_category}'
+    save_user_states(user_states)
+
+# Handle shopping category callback
+async def handle_shopping_category_callback(query, context: ContextTypes.DEFAULT_TYPE, category: str) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    # Get items for this category (remove emoji if present)
+    clean_category = category[2:] if category.startswith(('🍎', '杨欢ка', '📦')) else category
+    items = user_data.get(user_id, {}).get('shopping_list', {}).get(clean_category, [])
+    
+    # Create keyboard with items and action buttons
+    keyboard = []
+    
+    # Add items
+    for item in items:
+        keyboard.append([InlineKeyboardButton(f'❌ {item}', callback_data=f'delete_item_{clean_category}_{item}')])
+    
+    # Add action buttons
+    keyboard.append([InlineKeyboardButton('➕ Добавить', callback_data=f'add_item_{clean_category}'), InlineKeyboardButton('🗑 Очистить', callback_data=f'clear_category_{clean_category}')])
+    keyboard.append([InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')])  # Use consistent text
+    
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    if items:
+        items_text = '\n'.join([f'• {item}' for item in items])
+        message = f'{clean_category}:\n{items_text}'
+    else:
+        message = f'{clean_category}:\nСписок пуст. Добавьте первый элемент!'
+    
+    await query.edit_message_text(
+        f'{message}\n\nВыберите действие:',
+        reply_markup=reply_markup
+    )
+    
+    # Save state for adding items
+    user_states = load_user_states()
+    user_states[user_id] = f'ADDING_ITEM_{clean_category}'
+    save_user_states(user_states)
+
+# Handle adding item to shopping list
+def handle_add_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    user_data = load_user_data()
+    user_states = load_user_states()
+    
+    if user_id not in user_states or not user_states[user_id].startswith('ADDING_ITEM_'):
+        return
+    
+    clean_category = user_states[user_id].replace('ADDING_ITEM_', '')
+    item = update.message.text
+    
+    if user_id not in user_data:
+        user_data[user_id] = {'shopping_list': {}}
+    if 'shopping_list' not in user_data[user_id]:
+        user_data[user_id]['shopping_list'] = {}
+    if clean_category not in user_data[user_id]['shopping_list']:
+        user_data[user_id]['shopping_list'][clean_category] = []
+    
+    user_data[user_id]['shopping_list'][clean_category].append(item)
+    save_user_data(user_data)
+    
+    del user_states[user_id]
+    save_user_states(user_states)
+    
+    handle_shopping_category(update, context, clean_category)
+
+# Handle delete shopping item
+def handle_delete_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_to_delete: str) -> None:
+    user_id = str(update.effective_user.id)
+    user_data = load_user_data()
+    
+    for category, items in user_data.get(user_id, {}).get('shopping_list', {}).items():
+        if item_to_delete in items:
+            items.remove(item_to_delete)
+            save_user_data(user_data)
+            handle_shopping_category(update, context, category)
+            return
+    
+    update.message.reply_text('Предмет не найден', reply_markup=main_menu())
+
+# Handle clear shopping category
+def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    user_data = load_user_data()
+    user_states = load_user_states()
+    
+    if user_id not in user_states or not user_states[user_id].startswith('ADDING_ITEM_'):
+        return
+    
+    clean_category = user_states[user_id].replace('ADDING_ITEM_', '')
+    user_data[user_id]['shopping_list'][clean_category] = []
+    save_user_data(user_data)
+    
+    del user_states[user_id]
+    save_user_states(user_states)
+    
+    handle_shopping_category(update, context, clean_category)
+
+# Handle deposit to piggy bank
+def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    user_states = load_user_states()
+    user_data = load_user_data()
+    
+    # Get current piggy bank from state
+    if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
+        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        return
+    
+    piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
+    
+    if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        return
+    
+    user_states[user_id] = f'DEPOSITING_{piggy_name}'
+    save_user_states(user_states)
+    
+    keyboard = [
+        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    update.message.reply_text(
+        f'💰 Введите сумму для пополнения копилки "{piggy_name}":',
         reply_markup=reply_markup
     )
 
@@ -806,13 +1006,13 @@ def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAULT_TYP
     
     # Get current piggy bank from state
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('Ошибка: не выбрана копилка')
+        update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('Ошибка: копилка не найдена')
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     user_states[user_id] = f'WITHDRAWING_{piggy_name}'
@@ -824,50 +1024,35 @@ def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAULT_TYP
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     update.message.reply_text(
-        f'Введите сумму для снятия из копилки "{piggy_name}":',
+        f'💸 Введите сумму для снятия из копилки "{piggy_name}":',
         reply_markup=reply_markup
     )
 
-# Handle deposit/withdraw amount input
+# Handle amount input
 def handle_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
     
-    if user_id not in user_states or not user_states[user_id].startswith(('DEPOSITING_', 'WITHDRAWING_')):
+    if user_id not in user_states:
         return
     
     try:
         amount = float(update.message.text)
+        piggy_name = user_states[user_id].split('_')[1]
         
         if user_states[user_id].startswith('DEPOSITING_'):
-            # Deposit money
-            piggy_name = user_states[user_id].replace('DEPOSITING_', '')
-            if piggy_name in user_data[user_id]['piggy_banks']:
-                user_data[user_id]['piggy_banks'][piggy_name]['current'] += amount
-                save_user_data(user_data)
-                
-                # Show updated piggy bank
-                handle_piggy_bank_actions(update, context, piggy_name)
-                return
-        else:
-            # Withdraw money
-            piggy_name = user_states[user_id].replace('WITHDRAWING_', '')
-            if piggy_name in user_data[user_id]['piggy_banks']:
-                user_data[user_id]['piggy_banks'][piggy_name]['current'] -= amount
-                if user_data[user_id]['piggy_banks'][piggy_name]['current'] < 0:
-                    user_data[user_id]['piggy_banks'][piggy_name]['current'] = 0
-                save_user_data(user_data)
-                
-                # Show updated piggy bank
-                handle_piggy_bank_actions(update, context, piggy_name)
-                return
+            user_data[user_id]['piggy_banks'][piggy_name]['current'] += amount
+        elif user_states[user_id].startswith('WITHDRAWING_'):
+            user_data[user_id]['piggy_banks'][piggy_name]['current'] -= amount
         
+        save_user_data(user_data)
         del user_states[user_id]
         save_user_states(user_states)
         
+        handle_piggy_bank_actions(update, context, piggy_name)
     except ValueError:
-        update.message.reply_text('Пожалуйста, введите корректную сумму (число):')
+        update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
 
 # Handle edit piggy bank
 def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -875,105 +1060,54 @@ def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     user_states = load_user_states()
     user_data = load_user_data()
     
-    # Get current piggy bank from state
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('Ошибка: не выбрана копилка')
+        update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('Ошибка: копилка не найдена')
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     keyboard = [
         [InlineKeyboardButton('✏️ Изменить название', callback_data=f'edit_name_{piggy_name}'), InlineKeyboardButton('✏️ Изменить сумму', callback_data=f'edit_target_{piggy_name}')],
-        [InlineKeyboardButton(f' Мос {piggy_name}', callback_data=f'piggy_bank_{piggy_name}'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        [InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     update.message.reply_text(
-        f'Редактирование копилки "{piggy_name}":\nВыберите что изменить:',
+        f'Редактирование копилки "{piggy_name}"\n\nВыберите действие:',
         reply_markup=reply_markup
     )
-
-# Handle delete piggy bank
-def handle_delete_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(update.effective_user.id)
-    user_states = load_user_states()
-    user_data = load_user_data()
-    
-    # Get current piggy bank from state
-    if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('Ошибка: не выбрана копилка')
-        return
-    
-    piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
-    
-    if piggy_name in user_data.get(user_id, {}).get('piggy_banks', {}):
-        del user_data[user_id]['piggy_banks'][piggy_name]
-        save_user_data(user_data)
-        
-        keyboard = [
-            [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        update.message.reply_text(
-            f'✅ Копилка "{piggy_name}" удалена',
-            reply_markup=reply_markup
-        )
-    else:
-        update.message.reply_text('Ошибка: копилка не найдена')
-    
-    # Clear state
-    if user_id in user_states:
-        del user_states[user_id]
-        save_user_states(user_states)
 
 # Handle edit piggy bank name
 def handle_edit_piggy_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
+    user_data = load_user_data()
     
-    # Set state to wait for new name
-    if user_id in user_states and user_states[user_id].startswith('CURRENT_PIGGY_'):
-        piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
-        user_states[user_id] = f'EDITING_PIGGY_NAME_{piggy_name}'
-        save_user_states(user_states)
-        
-        keyboard = [
-            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        update.message.reply_text(
-            f'Введите новое название для копилки "{piggy_name}":',
-            reply_markup=reply_markup
-        )
-
-# Handle edit piggy bank target
-def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(update.effective_user.id)
-    user_states = load_user_states()
+    if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
+        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        return
     
-    # Set state to wait for new target
-    if user_id in user_states and user_states[user_id].startswith('CURRENT_PIGGY_'):
-        piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
-        user_states[user_id] = f'EDITING_PIGGY_TARGET_{piggy_name}'
-        save_user_states(user_states)
-        
-        keyboard = [
+    piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
+    
+    if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        return
+    
+    user_states[user_id] = f'EDITING_PIGGY_NAME_{piggy_name}'
+    save_user_states(user_states)
+    
+    update.message.reply_text(
+        f'📝 Введите новое название для копилки "{piggy_name}":',
+        reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        update.message.reply_text(
-            f'Введите новую целевую сумму для копилки "{piggy_name}":',
-            reply_markup=reply_markup
-        )
+        ])
+    )
 
-# Handle piggy bank name edit input
+# Handle edit piggy bank name input
 def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
@@ -985,35 +1119,45 @@ def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_T
     new_name = update.message.text
     old_name = user_states[user_id].replace('EDITING_PIGGY_NAME_', '')
     
-    # Rename piggy bank
-    if old_name in user_data.get(user_id, {}).get('piggy_banks', {}):
-        # Save the piggy bank data
-        piggy_data = user_data[user_id]['piggy_banks'][old_name]
-        # Remove old entry
-        del user_data[user_id]['piggy_banks'][old_name]
-        # Add with new name
-        user_data[user_id]['piggy_banks'][new_name] = piggy_data
-        save_user_data(user_data)
-        
-        keyboard = [
-            [InlineKeyboardButton(f' Мос {new_name}', callback_data=f'piggy_bank_{new_name}')],
-            [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        update.message.reply_text(
-            f'✅ Название копилки изменено с "{old_name}" на "{new_name}"',
-            reply_markup=reply_markup
-        )
-    else:
-        update.message.reply_text('Ошибка: копилка не найдена')
+    if user_id not in user_data or old_name not in user_data[user_id]['piggy_banks']:
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        return
     
-    # Clear state
-    if user_id in user_states:
-        del user_states[user_id]
-        save_user_states(user_states)
+    user_data[user_id]['piggy_banks'][new_name] = user_data[user_id]['piggy_banks'].pop(old_name)
+    save_user_data(user_data)
+    
+    del user_states[user_id]
+    save_user_states(user_states)
+    
+    handle_piggy_bank_actions(update, context, new_name)
 
-# Handle piggy bank target edit input
+# Handle edit piggy bank target
+def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    user_states = load_user_states()
+    user_data = load_user_data()
+    
+    if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
+        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        return
+    
+    piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
+    
+    if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        return
+    
+    user_states[user_id] = f'EDITING_PIGGY_TARGET_{piggy_name}'
+    save_user_states(user_states)
+    
+    update.message.reply_text(
+        f'🎯 Введите новую целевую сумму для копилки "{piggy_name}":',
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ])
+    )
+
+# Handle edit piggy bank target input
 def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
@@ -1026,222 +1170,74 @@ def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT
         new_target = float(update.message.text)
         piggy_name = user_states[user_id].replace('EDITING_PIGGY_TARGET_', '')
         
-        # Update target
-        if piggy_name in user_data.get(user_id, {}).get('piggy_banks', {}):
-            user_data[user_id]['piggy_banks'][piggy_name]['target'] = new_target
-            save_user_data(user_data)
-            
-            # Show updated piggy bank
-            handle_piggy_bank_actions(update, context, piggy_name)
-        else:
-            update.message.reply_text('Ошибка: копилка не найдена')
+        if user_id not in user_data or piggy_name not in user_data[user_id]['piggy_banks']:
+            update.message.reply_text('❌ Ошибка: копилка не найдена')
+            return
         
-        # Clear state
-        if user_id in user_states:
-            del user_states[user_id]
-            save_user_states(user_states)
-            
+        user_data[user_id]['piggy_banks'][piggy_name]['target'] = new_target
+        save_user_data(user_data)
+        
+        del user_states[user_id]
+        save_user_states(user_states)
+        
+        handle_piggy_bank_actions(update, context, piggy_name)
     except ValueError:
-        update.message.reply_text('Пожалуйста, введите корректную сумму (число):')
+        update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
 
-# Shopping list section
-def handle_shopping_list_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    keyboard = [
-        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('💊 Аптека', callback_data='category_Аптека')],
-        [InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    import asyncio
-    asyncio.create_task(update.message.reply_text('🛒 Список покупок:\nВыберите категорию:', reply_markup=reply_markup))
-
-# Shopping list section callback
-def handle_shopping_list_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
-    keyboard = [
-        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('💊 Аптека', callback_data='category_Аптека')],
-        [InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    query.edit_message_text('🛒 Список покупок:\nВыберите категорию:', reply_markup=reply_markup)
-
-# Handle shopping category
-def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str) -> None:
+# Handle delete piggy bank
+def handle_delete_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
-    # Get items for this category (remove emoji if present)
-    clean_category = category[2:] if category.startswith(('🍎', '💊', '📦')) else category
-    items = user_data.get(user_id, {}).get('shopping_list', {}).get(clean_category, [])
-    
-    # Create keyboard with items and action buttons
-    keyboard = []
-    
-    # Add items
-    for item in items:
-        keyboard.append([InlineKeyboardButton(f'❌ {item}', callback_data=f'delete_item_{clean_category}_{item}')])
-    
-    # Add action buttons
-    keyboard.append([InlineKeyboardButton('➕ Добавить', callback_data=f'add_item_{clean_category}'), InlineKeyboardButton('🗑 Очистить', callback_data=f'clear_category_{clean_category}')])
-    keyboard.append([InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')])  # Use consistent text
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    if items:
-        items_text = '\n'.join([f'• {item}' for item in items])
-        message = f'{clean_category}:\n{items_text}'
-    else:
-        message = f'{clean_category}:\nСписок пуст. Добавьте первый элемент!'
-    
-    update.message.reply_text(
-        f'{message}\n\nВыберите действие:',
-        reply_markup=reply_markup
-    )
-    
-    # Save state for adding items
-    user_states = load_user_states()
-    user_states[user_id] = f'ADDING_ITEM_{clean_category}'
-    save_user_states(user_states)
-
-# Handle shopping category callback
-def handle_shopping_category_callback(query, context: ContextTypes.DEFAULT_TYPE, category: str) -> None:
-    user_id = str(query.from_user.id)
-    user_data = load_user_data()
-    
-    # Get items for this category (remove emoji if present)
-    clean_category = category[2:] if category.startswith(('🍎', '💊', '📦')) else category
-    items = user_data.get(user_id, {}).get('shopping_list', {}).get(clean_category, [])
-    
-    # Create keyboard with items and action buttons
-    keyboard = []
-    
-    # Add items
-    for item in items:
-        keyboard.append([InlineKeyboardButton(f'❌ {item}', callback_data=f'delete_item_{clean_category}_{item}')])
-    
-    # Add action buttons
-    keyboard.append([InlineKeyboardButton('➕ Добавить', callback_data=f'add_item_{clean_category}'), InlineKeyboardButton('🗑 Очистить', callback_data=f'clear_category_{clean_category}')])
-    keyboard.append([InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')])  # Use consistent text
-    
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    if items:
-        items_text = '\n'.join([f'• {item}' for item in items])
-        message = f'{clean_category}:\n{items_text}'
-    else:
-        message = f'{clean_category}:\nСписок пуст. Добавьте первый элемент!'
-    
-    query.edit_message_text(
-        f'{message}\n\nВыберите действие:',
-        reply_markup=reply_markup
-    )
-    
-    # Save state for adding items
-    user_states = load_user_states()
-    user_states[user_id] = f'ADDING_ITEM_{clean_category}'
-    save_user_states(user_states)
-
-# Handle adding shopping item
-def handle_add_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(update.effective_user.id)
-    user_data = load_user_data()
-    user_states = load_user_states()
-    
-    if user_id not in user_states or not user_states[user_id].startswith('ADDING_ITEM_'):
+    if user_id not in user_data:
+        update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
-    category = user_states[user_id].replace('ADDING_ITEM_', '')
-    item_text = update.message.text
+    piggy_name = user_data[user_id]['piggy_banks'].keys()
     
-    # Add item to category
-    if user_id not in user_data:
-        user_data[user_id] = {'shopping_list': {'Продукты': [], 'Аптека': [], 'Остальное': []}}
-    if 'shopping_list' not in user_data[user_id]:
-        user_data[user_id]['shopping_list'] = {'Продукты': [], 'Аптека': [], 'Остальное': []}
-    if category not in user_data[user_id]['shopping_list']:
-        user_data[user_id]['shopping_list'][category] = []
-        
-    user_data[user_id]['shopping_list'][category].append(item_text)
+    if not piggy_name:
+        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        return
+    
+    del user_data[user_id]['piggy_banks']
     save_user_data(user_data)
     
-    # Show updated category
-    handle_shopping_category(update, context, category)
-
-# Handle deleting shopping item
-def handle_delete_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_text: str) -> None:
-    user_id = str(update.effective_user.id)
-    user_data = load_user_data()
-    user_states = load_user_states()
-    
-    # Get category from state
-    if user_id not in user_states or not user_states[user_id].startswith('ADDING_ITEM_'):
-        return
-    
-    category = user_states[user_id].replace('ADDING_ITEM_', '')
-    
-    # Remove item from category
-    if category in user_data.get(user_id, {}).get('shopping_list', {}):
-        if item_text in user_data[user_id]['shopping_list'][category]:
-            user_data[user_id]['shopping_list'][category].remove(item_text)
-            save_user_data(user_data)
-    
-    # Show updated category
-    handle_shopping_category(update, context, category)
-
-# Handle clearing shopping category
-def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(update.effective_user.id)
-    user_data = load_user_data()
-    user_states = load_user_states()
-    
-    # Get category from state
-    if user_id not in user_states or not user_states[user_id].startswith('ADDING_ITEM_'):
-        return
-    
-    category = user_states[user_id].replace('ADDING_ITEM_', '')
-    
-    # Clear category
-    if category in user_data.get(user_id, {}).get('shopping_list', {}):
-        user_data[user_id]['shopping_list'][category] = []
-        save_user_data(user_data)
-    
-    # Show updated category
-    handle_shopping_category(update, context, category)
+    update.message.reply_text('✅ Копилка удалена', reply_markup=main_menu())
 
 # Handle callback queries for inline keyboards
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    
-    data = query.data
-    user_id = str(update.effective_user.id)
-    
-    logger.info(f"User {user_id} clicked button with callback_data: {data}")
-    
     try:
+        query = update.callback_query
+        await query.answer()
+        
+        data = query.data
+        user_id = str(update.effective_user.id)
+        
+        logger.info(f"User {user_id} clicked button with callback_data: {data}")
+        
         # Handle different callback data
         if data == 'main_menu':
             await show_main_menu_callback(query, context)
         elif data == 'crypto_menu':
-            handle_crypto_menu_callback(query, context)
+            await handle_crypto_menu_callback(query, context)
         elif data == 'piggy_bank_menu':
-            handle_piggy_bank_menu_callback(query, context)
+            await handle_piggy_bank_menu_callback(query, context)
         elif data == 'shopping_list_menu':
-            handle_shopping_list_menu_callback(query, context)
+            await handle_shopping_list_menu_callback(query, context)
         elif data == 'settings_menu':
-            handle_settings_menu_callback(query, context)
+            await handle_settings_menu_callback(query, context)
         elif data == 'help_menu':
-            handle_help_menu_callback(query, context)
+            await handle_help_menu_callback(query, context)
         elif data.startswith('piggy_bank_'):
             piggy_name = data.replace('piggy_bank_', '')
-            handle_piggy_bank_actions_callback(query, context, piggy_name)
+            await handle_piggy_bank_actions_callback(query, context, piggy_name)
         elif data.startswith('category_'):
             category = data.replace('category_', '')
-            handle_shopping_category_callback(query, context, category)
+            await handle_shopping_category_callback(query, context, category)
         elif data == 'create_piggy_bank':
-            handle_create_piggy_bank_callback(query, context)
+            await handle_create_piggy_bank_callback(query, context)
         elif data == 'enter_api_keys':
-            handle_enter_api_keys_callback(query, context)
+            await handle_enter_api_keys_callback(query, context)
         elif data.startswith('deposit_'):
             piggy_name = data.replace('deposit_', '')
             # Handle deposit logic
@@ -1255,7 +1251,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup = InlineKeyboardMarkup(keyboard)
                 
             await query.edit_message_text(
-                f'Введите сумму для пополнения копилки "{piggy_name}":',
+                f'💰 Введите сумму для пополнения копилки "{piggy_name}":',
                 reply_markup=reply_markup
             )
         elif data.startswith('withdraw_'):
@@ -1271,7 +1267,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup = InlineKeyboardMarkup(keyboard)
                 
             await query.edit_message_text(
-                f'Введите сумму для снятия из копилки "{piggy_name}":',
+                f'💸 Введите сумму для снятия из копилки "{piggy_name}":',
                 reply_markup=reply_markup
             )
         elif data.startswith('edit_name_'):
@@ -1287,7 +1283,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup = InlineKeyboardMarkup(keyboard)
                 
             await query.edit_message_text(
-                f'Введите новое название для копилки "{piggy_name}":',
+                f'📝 Введите новое название для копилки "{piggy_name}":',
                 reply_markup=reply_markup
             )
         elif data.startswith('edit_target_'):
@@ -1303,13 +1299,25 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             reply_markup = InlineKeyboardMarkup(keyboard)
                 
             await query.edit_message_text(
-                f'Введите новую целевую сумму для копилки "{piggy_name}":',
+                f'🎯 Введите новую целевую сумму для копилки "{piggy_name}":',
                 reply_markup=reply_markup
             )
         elif data.startswith('edit_'):
             piggy_name = data.replace('edit_', '')
             # Handle edit logic
-            pass
+            user_states = load_user_states()
+            user_states[user_id] = f'EDITING_PIGGY_NAME_{piggy_name}'
+            save_user_states(user_states)
+                
+            keyboard = [
+                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+                
+            await query.edit_message_text(
+                f'📝 Введите новое название для копилки "{piggy_name}":',
+                reply_markup=reply_markup
+            )
         elif data.startswith('delete_'):
             piggy_name = data.replace('delete_', '')
             # Handle delete logic
@@ -1319,16 +1327,16 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 save_user_data(user_data)
                     
                 keyboard = [
-                    [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                    [InlineKeyboardButton('🏦 Копилки', callback_data='piggy_bank_menu'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                     
                 await query.edit_message_text(
-                    f'✅ Копилка "{piggy_name}" удалена',
+                    f'✅ Копилка "{piggy_name}" успешно удалена',
                     reply_markup=reply_markup
                 )
             else:
-                await query.edit_message_text('Ошибка: копилка не найдена')
+                await query.edit_message_text('❌ Ошибка: копилка не найдена')
         elif data.startswith('add_item_'):
             category = data.replace('add_item_', '')
             # Handle add item logic
@@ -1354,7 +1362,7 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                 save_user_data(user_data)
                     
                 # Show updated category
-                handle_shopping_category_callback(query, context, category)
+                await handle_shopping_category_callback(query, context, category)
         elif data.startswith('delete_item_'):
             # Handle delete item logic
             parts = data.split('_', 3)
@@ -1369,85 +1377,37 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                         save_user_data(user_data)
                             
                         # Show updated category
-                        handle_shopping_category_callback(query, context, category)
+                        await handle_shopping_category_callback(query, context, category)
                     else:
-                        await query.edit_message_text('Ошибка: товар не найден')
+                        await query.edit_message_text('❌ Ошибка: товар не найден')
                 else:
-                    await query.edit_message_text('Ошибка: категория не найдена')
+                    await query.edit_message_text('❌ Ошибка: категория не найдена')
             else:
-                await query.edit_message_text('Ошибка: некорректные данные')
+                await query.edit_message_text('❌ Ошибка: некорректные данные')
         else:
             logger.warning(f"Unknown callback_data: {data}")
             await query.edit_message_text("Неизвестная команда. Пожалуйста, попробуйте еще раз.")
-        # Add more callback handlers as needed
     except Exception as e:
         logger.error(f"Error handling callback query: {e}")
-        await query.edit_message_text("Произошла ошибка. Пожалуйста, попробуйте еще раз.")
+        try:
+            await update.callback_query.answer("Произошла ошибка. Пожалуйста, попробуйте еще раз.")
+        except:
+            pass
 
-# Callback versions of menu functions
-async def show_main_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
-    # Create a comprehensive menu with all functionality
-    keyboard = [
-        [InlineKeyboardButton('💰 Крипта', callback_data='crypto_menu'), InlineKeyboardButton('🏦 Копилка', callback_data='piggy_bank_menu')],
-        [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
-        [InlineKeyboardButton('⚙️ Настройки', callback_data='settings_menu'), InlineKeyboardButton('ℹ️ Помощь', callback_data='help_menu')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        'Главное меню:',
-        reply_markup=reply_markup
-    )
+def main():
+    """Start the bot."""
+    # Create the Application and pass it your bot's token.
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
-# Main function
-def main() -> None:
-    # Set console window title
-    try:
-        import ctypes
-        ctypes.windll.kernel32.SetConsoleTitleW("Финансовый Telegram Бот")
-    except:
-        pass  # Ignore if not on Windows
-    
+    # Register handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu))
+    application.add_handler(CallbackQueryHandler(handle_callback_query))
+
+    # Run the bot until the user presses Ctrl-C
     logger.info("Starting bot...")
-    
-    # Check if TELEGRAM_BOT_TOKEN is set
-    if not TELEGRAM_BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN is not set!")
-        print("ОШИБКА: Не установлен TELEGRAM_BOT_TOKEN!")
-        print("Пожалуйста, проверьте файл .env и убедитесь, что токен бота указан правильно.")
-        return
-    
-    if TELEGRAM_BOT_TOKEN == "your_telegram_bot_token_here":
-        logger.error("Default TELEGRAM_BOT_TOKEN detected!")
-        print("ОШИБКА: Обнаружен токен по умолчанию!")
-        print("Пожалуйста, измените TELEGRAM_BOT_TOKEN в файле .env на реальный токен бота.")
-        return
-    
-    try:
-        import asyncio
-        
-        # Create the Application and pass it your bot's token.
-        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-        
-        # Register handlers
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu))
-        application.add_handler(CallbackQueryHandler(handle_callback_query))
-        
-        logger.info("Bot started successfully!")
-        print("Бот успешно запущен! Для остановки нажмите Ctrl+C")
-        
-        # Start the Bot
-        application.run_polling()
-        
-    except Exception as e:
-        logger.error(f"Failed to start bot: {e}")
-        print(f"ОШИБКА: Не удалось запустить бота: {e}")
-        print("Проверьте:")
-        print("1. Правильность токена бота в файле .env")
-        print("2. Подключение к интернету")
-        print("3. Доступность Telegram API")
-        return
+    application.run_polling()
+    logger.info("Bot started successfully!")
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
