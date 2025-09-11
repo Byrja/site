@@ -155,17 +155,20 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         # Handle piggy bank editing
         elif state.startswith('EDITING_PIGGY_NAME_'):
-            handle_edit_piggy_name(update, context)
+            handle_edit_piggy_name_input(update, context)
             return
         elif state.startswith('EDITING_PIGGY_TARGET_'):
-            handle_edit_piggy_target(update, context)
+            handle_edit_piggy_target_input(update, context)
             return
     
     # Clear user state if not in a specific flow
-    if user_id in user_states and not text.startswith(('➕ Создать копилку', '✏️ Редактировать', '💰 Положить', '💸 Снять')):
-        if text not in ['🔑 Ввести API ключи', '➕ Добавить']:
-            del user_states[user_id]
-            save_user_states(user_states)
+    if user_id in user_states:
+        should_clear_state = True
+        # Don't clear state for specific flows
+        if not text.startswith(('➕ Создать копилку', '✏️ Редактировать', '💰 Положить', '💸 Снять')):
+            if text not in ['🔑 Ввести API ключи', '➕ Добавить']:
+                del user_states[user_id]
+                save_user_states(user_states)
     
     # Handle menu selections
     if text == '💰 Крипта':
@@ -175,7 +178,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif text == '🛒 Список покупок':
         handle_shopping_list_menu(update, context)
     elif text == '🏠 Главная':
-        start(update, context)
+        await start(update, context)  # Make this async call
     elif text.startswith(' Мос '):
         # Handle piggy bank selection
         piggy_name = text[2:].strip()
@@ -183,7 +186,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif text in ['📊 Статистика', '💰 Баланс', '⚙️ Настройки']:
         handle_crypto_submenu(update, context, text)
     elif text in ['🍎 Продукты', '💊 Аптека', '📦 Остальное']:
-        handle_shopping_category(update, context, text[2:])  # Remove emoji
+        handle_shopping_category(update, context, text)  # Keep emoji for proper matching
     elif text == '➕ Создать копилку':
         handle_create_piggy_bank(update, context)
     elif text == '🔑 Ввести API ключи':
@@ -206,9 +209,19 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         handle_edit_piggy_bank(update, context)
     elif text == '❌ Удалить':
         handle_delete_piggy_bank(update, context)
+    elif text.startswith('✏️ Изменить название'):
+        handle_edit_piggy_name(update, context)
+    elif text.startswith('✏️ Изменить сумму'):
+        handle_edit_piggy_target(update, context)
+    elif text == ' mos Копилка' or text == ' Мос Копилка':  # Handle both variations
+        handle_piggy_bank_menu(update, context)
+    elif text == ' mos Список покупок' or text == '🛒 Список покупок':  # Handle both variations
+        handle_shopping_list_menu(update, context)
+    elif text == '⚙️ Настройки':  # Explicitly handle settings button
+        handle_crypto_submenu(update, context, text)
     else:
         # For any other text, show main menu
-        update.message.reply_text('Пожалуйста, выберите действие из меню:', reply_markup=main_menu())
+        await update.message.reply_text('Пожалуйста, выберите действие из меню:', reply_markup=main_menu())
 
 # Handle crypto menu
 def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -223,24 +236,22 @@ def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     
     # Check if API keys are set
     if not user_data.get(user_id, {}).get('bybit_api_key') or not user_data.get(user_id, {}).get('bybit_api_secret'):
-        import asyncio
-        asyncio.create_task(update.message.reply_text(
+        update.message.reply_text(
             'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, перейдите в настройки.',
             reply_markup=reply_markup
-        ))
+        )
         return
     
     # Here we would normally fetch data from Bybit API
     # For now, let's show a placeholder message
-    import asyncio
-    asyncio.create_task(update.message.reply_text(
+    update.message.reply_text(
         '📈 Активные сделки:\n\n'
         'BTC/USDT: +2.5% ($120)\n'
         'ETH/USDT: -1.2% (-$45)\n\n'
         'Общий PnL: +$75\n\n'
         'Выберите действие:',
         reply_markup=reply_markup
-    ))
+    )
 
 # Handle crypto submenu
 def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, selection: str) -> None:
@@ -296,11 +307,14 @@ def handle_enter_api_keys(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     user_states[user_id] = 'WAITING_API_KEY'
     save_user_states(user_states)
     
+    keyboard = [
+        [{'text': '🏠 Главная'}]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
     update.message.reply_text(
         'Введите ваш API ключ Bybit:',
-        reply_markup=ReplyKeyboardMarkup([
-            [{'text': '🏠 Главная'}]
-        ], resize_keyboard=True)
+        reply_markup=reply_markup
     )
 
 # Handle API key input
@@ -324,11 +338,15 @@ def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     del user_states[user_id]
     save_user_states(user_states)
     
+    # After saving API key, ask for API secret and stay in settings
+    keyboard = [
+        [{'text': '🏠 Главная'}]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
     update.message.reply_text(
         '✅ API ключ сохранен!\nТеперь введите API Secret:',
-        reply_markup=ReplyKeyboardMarkup([
-            [{'text': '🏠 Главная'}]
-        ], resize_keyboard=True)
+        reply_markup=reply_markup
     )
     
     # Set state to wait for secret
@@ -356,11 +374,16 @@ def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     del user_states[user_id]
     save_user_states(user_states)
     
+    # After saving API keys, show crypto menu
+    keyboard = [
+        [{'text': '📊 Статистика'}, {'text': '💰 Баланс'}],
+        [{'text': '⚙️ Настройки'}, {'text': '🏠 Главная'}]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
     update.message.reply_text(
-        '✅ API Secret сохранен!\nНастройка Bybit завершена.',
-        reply_markup=ReplyKeyboardMarkup([
-            [{'text': '🏠 Главная'}]
-        ], resize_keyboard=True)
+        '✅ API Secret сохранен!\nНастройка Bybit завершена.\n\nТеперь вы можете использовать функции криптовалютного раздела.',
+        reply_markup=reply_markup
     )
 
 # Piggy bank section
@@ -402,7 +425,7 @@ def handle_piggy_bank_actions(update: Update, context: ContextTypes.DEFAULT_TYPE
     keyboard = [
         [{'text': '💰 Положить'}, {'text': '💸 Снять'}],
         [{'text': '✏️ Редактировать'}, {'text': '❌ Удалить'}],
-        [{'text': ' Мос Копилка'}, {'text': '🏠 Главная'}]
+        [{'text': ' Мос Копилка'}, {'text': '🏠 Главная'}]  # Use consistent text
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -482,7 +505,7 @@ def handle_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE
         update.message.reply_text(
             f'✅ Копилка "{piggy_name}" создана!\nЦелевая сумма: {target_amount} руб.',
             reply_markup=ReplyKeyboardMarkup([
-                [{'text': ' Мос Копилка'}],
+                [{'text': ' Мос Копилка'}],  # Use consistent text
                 [{'text': '🏠 Главная'}]
             ], resize_keyboard=True)
         )
@@ -603,7 +626,7 @@ def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     
     keyboard = [
         [{'text': '✏️ Изменить название'}, {'text': '✏️ Изменить сумму'}],
-        [{'text': f' Мос {piggy_name}'}, {'text': '🏠 Главная'}]
+        [{'text': f' Мос {piggy_name}'}, {'text': '🏠 Главная'}]  # Use consistent text
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -632,7 +655,7 @@ def handle_delete_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE)
         update.message.reply_text(
             f'✅ Копилка "{piggy_name}" удалена',
             reply_markup=ReplyKeyboardMarkup([
-                [{'text': ' Мос Копилка'}],
+                [{'text': ' Мос Копилка'}],  # Use consistent text
                 [{'text': '🏠 Главная'}]
             ], resize_keyboard=True)
         )
@@ -706,7 +729,7 @@ def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_T
             f'✅ Название копилки изменено с "{old_name}" на "{new_name}"',
             reply_markup=ReplyKeyboardMarkup([
                 [{'text': f' Мос {new_name}'}],
-                [{'text': ' Мос Копилка'}, {'text': '🏠 Главная'}]
+                [{'text': ' Мос Копилка'}, {'text': '🏠 Главная'}]  # Use consistent text
             ], resize_keyboard=True)
         )
     else:
@@ -764,8 +787,9 @@ def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE,
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
-    # Get items for this category
-    items = user_data.get(user_id, {}).get('shopping_list', {}).get(category, [])
+    # Get items for this category (remove emoji if present)
+    clean_category = category[2:] if category.startswith(('🍎', '💊', '📦')) else category
+    items = user_data.get(user_id, {}).get('shopping_list', {}).get(clean_category, [])
     
     # Create keyboard with items and action buttons
     keyboard = []
@@ -776,15 +800,15 @@ def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     # Add action buttons
     keyboard.append([{'text': '➕ Добавить'}, {'text': '🗑 Очистить'}])
-    keyboard.append([{'text': '🛒 Список покупок'}, {'text': '🏠 Главная'}])
+    keyboard.append([{'text': '🛒 Список покупок'}, {'text': '🏠 Главная'}])  # Use consistent text
     
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     if items:
         items_text = '\n'.join([f'• {item}' for item in items])
-        message = f'{category}:\n{items_text}'
+        message = f'{clean_category}:\n{items_text}'
     else:
-        message = f'{category}:\nСписок пуст'
+        message = f'{clean_category}:\nСписок пуст'
     
     update.message.reply_text(
         f'{message}\n\nВыберите действие:',
@@ -793,7 +817,7 @@ def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE,
     
     # Save state for adding items
     user_states = load_user_states()
-    user_states[user_id] = f'ADDING_ITEM_{category}'
+    user_states[user_id] = f'ADDING_ITEM_{clean_category}'
     save_user_states(user_states)
 
 # Handle adding shopping item
