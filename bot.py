@@ -77,7 +77,8 @@ def main_menu():
 # Function to delete user message for privacy
 def delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int) -> None:
     try:
-        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        import asyncio
+        asyncio.create_task(context.bot.delete_message(chat_id=chat_id, message_id=message_id))
     except Exception as e:
         logger.warning(f"Could not delete message: {e}")
 
@@ -89,7 +90,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     # Delete user's message for privacy
     if update.message:
-        await delete_message(context, update.effective_chat.id, update.message.message_id)
+        delete_message(context, update.effective_chat.id, update.message.message_id)
     
     if user_id not in user_data:
         user_data[user_id] = {
@@ -124,7 +125,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_data = load_user_data()
     
     # Delete user's message for privacy
-    await delete_message(context, update.effective_chat.id, update.message.message_id)
+    delete_message(context, update.effective_chat.id, update.message.message_id)
     
     # Handle different states
     if user_id in user_states:
@@ -860,7 +861,7 @@ def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT
     handle_shopping_category(update, context, category)
 
 # Main function
-async def main() -> None:
+def main() -> None:
     # Set console window title
     try:
         import ctypes
@@ -895,7 +896,7 @@ async def main() -> None:
         print("Бот успешно запущен! Для остановки нажмите Ctrl+C")
         
         # Start the Bot
-        await application.run_polling()
+        application.run_polling()
         
     except Exception as e:
         logger.error(f"Failed to start bot: {e}")
@@ -907,5 +908,4 @@ async def main() -> None:
         return
 
 if __name__ == '__main__':
-    import asyncio
-    asyncio.run(main())
+    main()

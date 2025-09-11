@@ -28,11 +28,23 @@ def generate_encryption_key():
             pass
     
     # Fallback to default (NOT secure for production)
-    return base64.urlsafe_b64encode(default_key)[:32]
+    # Ensure the key is 32 bytes and properly encoded
+    key = base64.urlsafe_b64encode(default_key)[:32]
+    # Make sure it's exactly 32 bytes
+    if len(key) < 32:
+        key = key.ljust(32, b'0')
+    elif len(key) > 32:
+        key = key[:32]
+    return key
 
 # Generate the encryption key
 ENCRYPTION_KEY = generate_encryption_key()
-cipher_suite = Fernet(ENCRYPTION_KEY)
+try:
+    cipher_suite = Fernet(ENCRYPTION_KEY)
+except ValueError:
+    # If the key is still invalid, generate a proper one
+    proper_key = Fernet.generate_key()
+    cipher_suite = Fernet(proper_key)
 
 # Functions for encryption/decryption
 def encrypt_data(data: str) -> str:
