@@ -109,9 +109,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         del user_states[user_id]
         save_user_states(user_states)
     
+    # Create a comprehensive menu with all functionality
+    keyboard = [
+        [{'text': '💰 Крипта'}, {'text': '🏦 Копилка'}],
+        [{'text': '🛒 Список покупок'}],
+        [{'text': '⚙️ Настройки'}, {'text': 'ℹ️ Помощь'}]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    welcome_message = (
+        'Добро пожаловать в финансовый бот! 🤖\n\n'
+        'Здесь вы можете управлять своими финансами, криптовалютными активами, '
+        'копилками и списками покупок.\n\n'
+        'Выберите нужный раздел:'
+    )
+    
     await update.message.reply_text(
-        'Добро пожаловать в финансовый бот! 🤖\nВыберите нужный раздел:',
-        reply_markup=main_menu()
+        welcome_message,
+        reply_markup=reply_markup
     )
 
 # Handle all text messages
@@ -218,10 +233,56 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif text == ' mos Список покупок' or text == '🛒 Список покупок':  # Handle both variations
         handle_shopping_list_menu(update, context)
     elif text == '⚙️ Настройки':  # Explicitly handle settings button
-        handle_crypto_submenu(update, context, text)
+        handle_settings_menu(update, context)
+    elif text == 'ℹ️ Помощь':
+        handle_help_menu(update, context)
     else:
         # For any other text, show main menu
-        await update.message.reply_text('Пожалуйста, выберите действие из меню:', reply_markup=main_menu())
+        await start(update, context)
+
+# Handle settings menu
+def handle_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(update.effective_user.id)
+    user_data = load_user_data()
+    
+    keyboard = [
+        [{'text': '🔑 Ввести API ключи'}],
+        [{'text': '🏠 Главная'}]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    api_info = "API ключи не установлены"
+    if user_data.get(user_id, {}).get('bybit_api_key'):
+        api_info = f"API Key установлен: {user_data[user_id]['bybit_api_key'][:5]}...{user_data[user_id]['bybit_api_key'][-5:]}"
+    
+    update.message.reply_text(
+        f'⚙️ Настройки бота:\n\n'
+        f'{api_info}\n\n'
+        f'Выберите действие:',
+        reply_markup=reply_markup
+    )
+
+# Handle help menu
+def handle_help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    keyboard = [
+        [{'text': '🏠 Главная'}]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
+    help_text = (
+        'ℹ️ Помощь по боту:\n\n'
+        '💰 Крипта - управление криптовалютными активами (требует API ключи Bybit)\n'
+        '🏦 Копилка - создание и управление финансовыми копилками\n'
+        '🛒 Список покупок - ведение списков покупок по категориям\n'
+        '⚙️ Настройки - настройка API ключей и других параметров\n\n'
+        'Для работы с криптовалютными функциями необходимо установить API ключи от Bybit '
+        'в разделе настроек.'
+    )
+    
+    update.message.reply_text(
+        help_text,
+        reply_markup=reply_markup
+    )
 
 # Handle crypto menu
 def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

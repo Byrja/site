@@ -44,24 +44,18 @@ if %errorlevel% neq 0 (
     echo Попробуйте выбрать пункт 6 для ручной установки.
     echo.
 )
-python bot.py
-if %errorlevel% neq 0 (
-    echo.
-    echo ОШИБКА: Не удалось запустить бота!
-    echo Проверьте:
-    echo 1. Установлен ли Python
-    echo 2. Установлены ли зависимости (выберите пункт 6)
-    echo 3. Правильно ли заполнен файл .env (пункт 7)
-    echo.
-    pause
-)
+start "Финансовый Telegram Бот" /min python bot.py
+echo Бот запущен в фоновом режиме.
+timeout /t 2 /nobreak >nul
 goto menu
 
 :stop_bot
 cls
 echo Остановка бота...
 echo.
-taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*"
+taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
+taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
+wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
 echo Бот остановлен.
 echo.
 pause
@@ -71,7 +65,9 @@ goto menu
 cls
 echo Перезапуск бота...
 echo.
-taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*"
+taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
+taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
+wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo Проверка зависимостей...
 pip install -r requirements.txt >nul 2>&1
@@ -80,17 +76,9 @@ if %errorlevel% neq 0 (
     echo Попробуйте выбрать пункт 6 для ручной установки.
     echo.
 )
-python bot.py
-if %errorlevel% neq 0 (
-    echo.
-    echo ОШИБКА: Не удалось запустить бота!
-    echo Проверьте:
-    echo 1. Установлен ли Python
-    echo 2. Установлены ли зависимости (выберите пункт 6)
-    echo 3. Правильно ли заполнен файл .env (пункт 7)
-    echo.
-    pause
-)
+start "Финансовый Telegram Бот" /min python bot.py
+echo Бот перезапущен.
+timeout /t 2 /nobreak >nul
 goto menu
 
 :update_bot
@@ -168,6 +156,11 @@ goto menu
 
 :exit
 cls
+echo Остановка бота и выход...
+echo.
+taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
+taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
+wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
 echo Спасибо за использование лаунчера!
 echo.
 pause
