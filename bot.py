@@ -1,6 +1,6 @@
 import logging
 from telegram import Update, ReplyKeyboardMarkup, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import json
 import os
 import requests
@@ -75,20 +75,21 @@ def main_menu():
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 # Function to delete user message for privacy
-def delete_message(context: CallbackContext, chat_id: int, message_id: int) -> None:
+def delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id: int) -> None:
     try:
-        context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+        await context.bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception as e:
         logger.warning(f"Could not delete message: {e}")
 
 # Start command
-def start(update: Update, context: CallbackContext) -> None:
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
     
     # Delete user's message for privacy
-    delete_message(context, update.effective_chat.id, update.message.message_id)
+    if update.message:
+        await delete_message(context, update.effective_chat.id, update.message.message_id)
     
     if user_id not in user_data:
         user_data[user_id] = {
@@ -107,20 +108,23 @@ def start(update: Update, context: CallbackContext) -> None:
         del user_states[user_id]
         save_user_states(user_states)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         'Добро пожаловать в финансовый бот! 🤖\nВыберите нужный раздел:',
         reply_markup=main_menu()
     )
 
 # Handle all text messages
-def handle_menu(update: Update, context: CallbackContext) -> None:
+async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not update.message or not update.message.text:
+        return
+        
     text = update.message.text
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
     
     # Delete user's message for privacy
-    delete_message(context, update.effective_chat.id, update.message.message_id)
+    await delete_message(context, update.effective_chat.id, update.message.message_id)
     
     # Handle different states
     if user_id in user_states:
@@ -206,7 +210,7 @@ def handle_menu(update: Update, context: CallbackContext) -> None:
         update.message.reply_text('Пожалуйста, выберите действие из меню:', reply_markup=main_menu())
 
 # Handle crypto menu
-def handle_crypto_menu(update: Update, context: CallbackContext) -> None:
+def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [{'text': '📊 Статистика'}, {'text': '💰 Баланс'}],
         [{'text': '⚙️ Настройки'}, {'text': '🏠 Главная'}]
@@ -236,7 +240,7 @@ def handle_crypto_menu(update: Update, context: CallbackContext) -> None:
     )
 
 # Handle crypto submenu
-def handle_crypto_submenu(update: Update, context: CallbackContext, selection: str) -> None:
+def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, selection: str) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -282,7 +286,7 @@ def handle_crypto_submenu(update: Update, context: CallbackContext, selection: s
         )
 
 # Handle enter API keys
-def handle_enter_api_keys(update: Update, context: CallbackContext) -> None:
+def handle_enter_api_keys(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
@@ -297,7 +301,7 @@ def handle_enter_api_keys(update: Update, context: CallbackContext) -> None:
     )
 
 # Handle API key input
-def handle_api_key_input(update: Update, context: CallbackContext) -> None:
+def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -329,7 +333,7 @@ def handle_api_key_input(update: Update, context: CallbackContext) -> None:
     save_user_states(user_states)
 
 # Handle API secret input
-def handle_api_secret_input(update: Update, context: CallbackContext) -> None:
+def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -357,7 +361,7 @@ def handle_api_secret_input(update: Update, context: CallbackContext) -> None:
     )
 
 # Piggy bank section
-def handle_piggy_bank_menu(update: Update, context: CallbackContext) -> None:
+def handle_piggy_bank_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -379,7 +383,7 @@ def handle_piggy_bank_menu(update: Update, context: CallbackContext) -> None:
         update.message.reply_text('🏠 Раздел копилок:', reply_markup=reply_markup)
 
 # Handle piggy bank actions
-def handle_piggy_bank_actions(update: Update, context: CallbackContext, piggy_name: str) -> None:
+def handle_piggy_bank_actions(update: Update, context: ContextTypes.DEFAULT_TYPE, piggy_name: str) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -413,7 +417,7 @@ def handle_piggy_bank_actions(update: Update, context: CallbackContext, piggy_na
     save_user_states(user_states)
 
 # Handle create piggy bank
-def handle_create_piggy_bank(update: Update, context: CallbackContext) -> None:
+def handle_create_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
@@ -428,7 +432,7 @@ def handle_create_piggy_bank(update: Update, context: CallbackContext) -> None:
     )
 
 # Handle piggy bank name input
-def handle_piggy_name_input(update: Update, context: CallbackContext) -> None:
+def handle_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -445,7 +449,7 @@ def handle_piggy_name_input(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('Введите целевую сумму для копилки:')
 
 # Handle piggy bank target input
-def handle_piggy_target_input(update: Update, context: CallbackContext) -> None:
+def handle_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -483,7 +487,7 @@ def handle_piggy_target_input(update: Update, context: CallbackContext) -> None:
         update.message.reply_text('Пожалуйста, введите корректную сумму (число):')
 
 # Handle deposit to piggy bank
-def handle_deposit_to_piggy(update: Update, context: CallbackContext) -> None:
+def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -510,7 +514,7 @@ def handle_deposit_to_piggy(update: Update, context: CallbackContext) -> None:
     )
 
 # Handle withdraw from piggy bank
-def handle_withdraw_from_piggy(update: Update, context: CallbackContext) -> None:
+def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -537,7 +541,7 @@ def handle_withdraw_from_piggy(update: Update, context: CallbackContext) -> None
     )
 
 # Handle deposit/withdraw amount input
-def handle_amount_input(update: Update, context: CallbackContext) -> None:
+def handle_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -578,7 +582,7 @@ def handle_amount_input(update: Update, context: CallbackContext) -> None:
         update.message.reply_text('Пожалуйста, введите корректную сумму (число):')
 
 # Handle edit piggy bank
-def handle_edit_piggy_bank(update: Update, context: CallbackContext) -> None:
+def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -606,7 +610,7 @@ def handle_edit_piggy_bank(update: Update, context: CallbackContext) -> None:
     )
 
 # Handle delete piggy bank
-def handle_delete_piggy_bank(update: Update, context: CallbackContext) -> None:
+def handle_delete_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -638,7 +642,7 @@ def handle_delete_piggy_bank(update: Update, context: CallbackContext) -> None:
         save_user_states(user_states)
 
 # Handle edit piggy bank name
-def handle_edit_piggy_name(update: Update, context: CallbackContext) -> None:
+def handle_edit_piggy_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
@@ -656,7 +660,7 @@ def handle_edit_piggy_name(update: Update, context: CallbackContext) -> None:
         )
 
 # Handle edit piggy bank target
-def handle_edit_piggy_target(update: Update, context: CallbackContext) -> None:
+def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
@@ -674,7 +678,7 @@ def handle_edit_piggy_target(update: Update, context: CallbackContext) -> None:
         )
 
 # Handle piggy bank name edit input
-def handle_edit_piggy_name_input(update: Update, context: CallbackContext) -> None:
+def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -711,7 +715,7 @@ def handle_edit_piggy_name_input(update: Update, context: CallbackContext) -> No
         save_user_states(user_states)
 
 # Handle piggy bank target edit input
-def handle_edit_piggy_target_input(update: Update, context: CallbackContext) -> None:
+def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -742,7 +746,7 @@ def handle_edit_piggy_target_input(update: Update, context: CallbackContext) -> 
         update.message.reply_text('Пожалуйста, введите корректную сумму (число):')
 
 # Shopping list section
-def handle_shopping_list_menu(update: Update, context: CallbackContext) -> None:
+def handle_shopping_list_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [{'text': '🍎 Продукты'}, {'text': '💊 Аптека'}],
         [{'text': '📦 Остальное'}, {'text': '🏠 Главная'}]
@@ -752,7 +756,7 @@ def handle_shopping_list_menu(update: Update, context: CallbackContext) -> None:
     update.message.reply_text('🛒 Список покупок:\nВыберите категорию:', reply_markup=reply_markup)
 
 # Handle shopping category
-def handle_shopping_category(update: Update, context: CallbackContext, category: str) -> None:
+def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -789,7 +793,7 @@ def handle_shopping_category(update: Update, context: CallbackContext, category:
     save_user_states(user_states)
 
 # Handle adding shopping item
-def handle_add_shopping_item(update: Update, context: CallbackContext) -> None:
+def handle_add_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -815,7 +819,7 @@ def handle_add_shopping_item(update: Update, context: CallbackContext) -> None:
     handle_shopping_category(update, context, category)
 
 # Handle deleting shopping item
-def handle_delete_shopping_item(update: Update, context: CallbackContext, item_text: str) -> None:
+def handle_delete_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_text: str) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -836,7 +840,7 @@ def handle_delete_shopping_item(update: Update, context: CallbackContext, item_t
     handle_shopping_category(update, context, category)
 
 # Handle clearing shopping category
-def handle_clear_shopping_category(update: Update, context: CallbackContext) -> None:
+def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -856,7 +860,7 @@ def handle_clear_shopping_category(update: Update, context: CallbackContext) -> 
     handle_shopping_category(update, context, category)
 
 # Main function
-def main() -> None:
+async def main() -> None:
     # Set console window title
     try:
         import ctypes
@@ -880,26 +884,18 @@ def main() -> None:
         return
     
     try:
-        # Create the Updater and pass it your bot's token.
-        updater = Updater(TELEGRAM_BOT_TOKEN)
-        
-        # Get the dispatcher to register handlers
-        dispatcher = updater.dispatcher
+        # Create the Application and pass it your bot's token.
+        application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
         
         # Register handlers
-        dispatcher.add_handler(CommandHandler("start", start))
-        dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_menu))
+        application.add_handler(CommandHandler("start", start))
+        application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu))
         
         logger.info("Bot started successfully!")
         print("Бот успешно запущен! Для остановки нажмите Ctrl+C")
         
         # Start the Bot
-        updater.start_polling()
-        
-        # Run the bot until you press Ctrl-C or the process receives SIGINT,
-        # SIGTERM or SIGABRT. This should be used most of the time, since
-        # start_polling() is non-blocking and will stop the bot gracefully.
-        updater.idle()
+        await application.run_polling()
         
     except Exception as e:
         logger.error(f"Failed to start bot: {e}")
@@ -911,4 +907,5 @@ def main() -> None:
         return
 
 if __name__ == '__main__':
-    main()
+    import asyncio
+    asyncio.run(main())

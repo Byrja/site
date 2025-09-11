@@ -16,7 +16,7 @@ echo 2. Остановить бота
 echo 3. Перезапустить бота
 echo 4. Обновить бота из GitHub
 echo 5. Проверить логи
-echo 6. Установить зависимости
+echo 6. Установить/обновить зависимости
 echo 7. Проверить конфигурацию
 echo 8. Выход
 echo.
@@ -37,6 +37,13 @@ goto menu
 cls
 echo Запуск бота...
 echo.
+echo Проверка зависимостей...
+pip install -r requirements.txt >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ОШИБКА: Не удалось установить зависимости!
+    echo Попробуйте выбрать пункт 6 для ручной установки.
+    echo.
+)
 python bot.py
 if %errorlevel% neq 0 (
     echo.
@@ -66,6 +73,13 @@ echo Перезапуск бота...
 echo.
 taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*"
 timeout /t 2 /nobreak >nul
+echo Проверка зависимостей...
+pip install -r requirements.txt >nul 2>&1
+if %errorlevel% neq 0 (
+    echo ОШИБКА: Не удалось установить зависимости!
+    echo Попробуйте выбрать пункт 6 для ручной установки.
+    echo.
+)
 python bot.py
 if %errorlevel% neq 0 (
     echo.
@@ -93,8 +107,19 @@ if %errorlevel% neq 0 (
 ) else (
     echo.
     echo Бот успешно обновлен!
-    echo.
-    pause
+    echo Установка обновленных зависимостей...
+    pip install -r requirements.txt
+    if %errorlevel% neq 0 (
+        echo.
+        echo ОШИБКА: Не удалось установить зависимости!
+        echo Попробуйте выбрать пункт 6 для ручной установки.
+        echo.
+        pause
+    ) else (
+        echo Зависимости успешно установлены!
+        echo.
+        pause
+    )
 )
 goto menu
 
@@ -113,7 +138,7 @@ goto menu
 
 :install_deps
 cls
-echo Установка зависимостей...
+echo Установка/обновление зависимостей...
 echo.
 pip install -r requirements.txt
 if %errorlevel% neq 0 (
@@ -126,7 +151,7 @@ if %errorlevel% neq 0 (
     pause
 ) else (
     echo.
-    echo Зависимости успешно установлены!
+    echo Зависимости успешно установлены/обновлены!
     echo.
     pause
 )
