@@ -901,7 +901,11 @@ def main() -> None:
         print("Бот успешно запущен! Для остановки нажмите Ctrl+C")
         
         # Start the Bot
+<<<<<<< HEAD
         asyncio.run(application.run_polling())
+=======
+        application.run_polling()
+>>>>>>> 08f8e1d695b4aee2459d0e8335683a8cd0b05c7e
         
     except Exception as e:
         logger.error(f"Failed to start bot: {e}")
