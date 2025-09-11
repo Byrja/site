@@ -115,7 +115,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         [{'text': '🛒 Список покупок'}],
         [{'text': '⚙️ Настройки'}, {'text': 'ℹ️ Помощь'}]
     ]
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
     
     welcome_message = (
         'Добро пожаловать в финансовый бот! 🤖\n\n'
@@ -124,8 +124,24 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         'Выберите нужный раздел:'
     )
     
+    # Send the menu with buttons
     await update.message.reply_text(
         welcome_message,
+        reply_markup=reply_markup
+    )
+
+# Function to show main menu
+async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Create a comprehensive menu with all functionality
+    keyboard = [
+        [{'text': '💰 Крипта'}, {'text': '🏦 Копилка'}],
+        [{'text': '🛒 Список покупок'}],
+        [{'text': '⚙️ Настройки'}, {'text': 'ℹ️ Помощь'}]
+    ]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=False)
+    
+    await update.message.reply_text(
+        'Главное меню:',
         reply_markup=reply_markup
     )
 
@@ -238,7 +254,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         handle_help_menu(update, context)
     else:
         # For any other text, show main menu
-        await start(update, context)
+        await show_main_menu(update, context)
 
 # Handle settings menu
 def handle_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
