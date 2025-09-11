@@ -89,8 +89,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_states = load_user_states()
     
     # Delete user's message for privacy
-    if update.message:
-        delete_message(context, update.effective_chat.id, update.message.message_id)
+    # if update.message:
+    #     delete_message(context, update.effective_chat.id, update.message.message_id)
     
     if user_id not in user_data:
         user_data[user_id] = {
@@ -125,7 +125,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     user_data = load_user_data()
     
     # Delete user's message for privacy
-    delete_message(context, update.effective_chat.id, update.message.message_id)
+    # delete_message(context, update.effective_chat.id, update.message.message_id)
     
     # Handle different states
     if user_id in user_states:
