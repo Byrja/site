@@ -56,6 +56,7 @@ echo.
 taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
 taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
 wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
+powershell "Get-Process python | Where-Object {$_.MainWindowTitle -like '*Финансовый Telegram Бот*'} | Stop-Process -Force" >nul 2>&1
 echo Бот остановлен.
 echo.
 pause
@@ -68,6 +69,7 @@ echo.
 taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
 taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
 wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
+powershell "Get-Process python | Where-Object {$_.MainWindowTitle -like '*Финансовый Telegram Бот*'} | Stop-Process -Force" >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo Проверка зависимостей...
 pip install -r requirements.txt >nul 2>&1
@@ -161,6 +163,7 @@ echo.
 taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
 taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
 wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
+powershell "Get-Process python | Where-Object {$_.MainWindowTitle -like '*Финансовый Telegram Бот*'} | Stop-Process -Force" >nul 2>&1
 echo Спасибо за использование лаунчера!
 echo.
 pause
