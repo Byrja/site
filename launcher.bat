@@ -18,10 +18,11 @@ echo 4. Обновить бота из GitHub
 echo 5. Проверить логи
 echo 6. Установить/обновить зависимости
 echo 7. Проверить конфигурацию
-echo 8. Выход
+echo 8. Диагностика проблем
+echo 9. Выход
 echo.
 echo ================================
-set /p choice="Выберите действие (1-8): "
+set /p choice="Выберите действие (1-9): "
 
 if "%choice%"=="1" goto start_bot
 if "%choice%"=="2" goto stop_bot
@@ -30,7 +31,8 @@ if "%choice%"=="4" goto update_bot
 if "%choice%"=="5" goto check_logs
 if "%choice%"=="6" goto install_deps
 if "%choice%"=="7" goto check_config
-if "%choice%"=="8" goto exit
+if "%choice%"=="8" goto diagnose_issues
+if "%choice%"=="9" goto exit
 goto menu
 
 :start_bot
@@ -152,6 +154,15 @@ cls
 echo Проверка конфигурации...
 echo.
 python check_config.py
+echo.
+pause
+goto menu
+
+:diagnose_issues
+cls
+echo Диагностика проблем...
+echo.
+python check_config.py --diagnose
 echo.
 pause
 goto menu
