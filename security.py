@@ -23,20 +23,8 @@ def generate_encryption_key():
         except Exception:
             pass
     
-<<<<<<< HEAD
     # Generate a proper Fernet key
     return Fernet.generate_key()
-=======
-    # Fallback to default (NOT secure for production)
-    # Ensure the key is 32 bytes and properly encoded
-    key = base64.urlsafe_b64encode(default_key)[:32]
-    # Make sure it's exactly 32 bytes
-    if len(key) < 32:
-        key = key.ljust(32, b'0')
-    elif len(key) > 32:
-        key = key[:32]
-    return key
->>>>>>> 08f8e1d695b4aee2459d0e8335683a8cd0b05c7e
 
 # Generate the encryption key
 ENCRYPTION_KEY = generate_encryption_key()
