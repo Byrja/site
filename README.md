@@ -28,17 +28,42 @@
 git clone https://github.com/Byrja/site.git
 ```
 
-2. Установите зависимости:
+2. Создайте виртуальное окружение (рекомендуется):
+```bash
+python -m venv venv
+source venv/bin/activate  # На Windows: venv\Scripts\activate
+```
+
+3. Установите зависимости:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Замените `YOUR_BOT_TOKEN` в [bot.py](file:///d:/Users/br/Documents/GitHub/site/bot.py) на токен вашего Telegram бота
+4. Создайте файл .env на основе .env.example и заполните его:
+```bash
+cp .env.example .env
+# Отредактируйте .env файл, добавив ваши токены
+```
 
-4. Запустите бота:
+5. Для повышения безопасности в production среде:
+   - Сгенерируйте безопасный ключ шифрования с помощью `python -c "from security import generate_secure_key; print(generate_secure_key())"`
+   - Добавьте его в .env файл как `ENCRYPTION_KEY=ваш_сгенерированный_ключ`
+   - Измените ключ шифрования в [security.py](file:///d:/Users/br/Documents/GitHub/site/security.py) на случайную 32-байтную строку
+
+6. Запустите бота:
 ```bash
 python bot.py
 ```
+
+## Безопасность
+
+- Все чувствительные данные (токены, API ключи) хранятся в файле .env
+- Файл .env добавлен в .gitignore и не попадает в репозиторий
+- Используйте .env.example как шаблон для настройки вашего окружения
+- API ключи Bybit шифруются перед сохранением в файл данных пользователей
+- Сообщения пользователей автоматически удаляются для сохранения конфиденциальности
+- Для production среды рекомендуется изменить ключ шифрования на случайную 32-байтную строку
+- Логи записываются в файлы и содержат только техническую информацию (без чувствительных данных)
 
 ## Использование
 
@@ -49,7 +74,10 @@ python bot.py
 ## Структура проекта
 
 - [bot.py](file:///d:/Users/br/Documents/GitHub/site/bot.py) - Основной файл бота
+- [config.py](file:///d:/Users/br/Documents/GitHub/site/config.py) - Конфигурация проекта
+- [security.py](file:///d:/Users/br/Documents/GitHub/site/security.py) - Функции безопасности и шифрования
 - [requirements.txt](file:///d:/Users/br/Documents/GitHub/site/requirements.txt) - Зависимости проекта
+- [.env.example](file:///d:/Users/br/Documents/GitHub/site/.env.example) - Пример файла переменных окружения
 - [user_data.json](file:///d:/Users/br/Documents/GitHub/site/user_data.json) - Данные пользователей (создается автоматически)
 - [user_states.json](file:///d:/Users/br/Documents/GitHub/site/user_states.json) - Состояния пользователей (создается автоматически)
 
@@ -57,4 +85,6 @@ python bot.py
 
 - Python 3.x
 - python-telegram-bot
+- python-dotenv для управления переменными окружения
+- cryptography для шифрования чувствительных данных
 - JSON для хранения данных

@@ -1,7 +1,11 @@
-# Bot Configuration
+import os
+from dotenv import load_dotenv
 
-# Telegram Bot Token - replace with your actual bot token
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN"
+# Load environment variables from .env file
+load_dotenv()
+
+# Telegram Bot Token - loaded from environment variables
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 
 # Bybit API Configuration
 BYBIT_API_URL = "https://api.bybit.com"

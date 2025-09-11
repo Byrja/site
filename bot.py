@@ -6,6 +6,7 @@ import os
 import requests
 from datetime import datetime
 from config import TELEGRAM_BOT_TOKEN, USER_DATA_FILE, USER_STATES_FILE
+from security import encrypt_data, decrypt_data
 
 # Enable logging
 logging.basicConfig(
@@ -22,14 +23,30 @@ USER_STATES = USER_STATES_FILE
 def load_user_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r') as f:
-            return json.load(f)
+            data = json.load(f)
+            # Decrypt API keys when loading
+            for user_id in data:
+                if 'bybit_api_key' in data[user_id]:
+                    data[user_id]['bybit_api_key'] = decrypt_data(data[user_id]['bybit_api_key'])
+                if 'bybit_api_secret' in data[user_id]:
+                    data[user_id]['bybit_api_secret'] = decrypt_data(data[user_id]['bybit_api_secret'])
+            return data
     else:
         return {}
 
 # Save user data
 def save_user_data(data):
+    # Encrypt API keys before saving
+    data_to_save = {}
+    for user_id in data:
+        data_to_save[user_id] = data[user_id].copy()
+        if 'bybit_api_key' in data_to_save[user_id]:
+            data_to_save[user_id]['bybit_api_key'] = encrypt_data(data_to_save[user_id]['bybit_api_key'])
+        if 'bybit_api_secret' in data_to_save[user_id]:
+            data_to_save[user_id]['bybit_api_secret'] = encrypt_data(data_to_save[user_id]['bybit_api_secret'])
+    
     with open(DATA_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+        json.dump(data_to_save, f, indent=2)
 
 # Load or create user states
 def load_user_states():
@@ -52,11 +69,21 @@ def main_menu():
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
+# Function to delete user message for privacy
+def delete_message(context: CallbackContext, chat_id: int, message_id: int) -> None:
+    try:
+        context.bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception as e:
+        logger.warning(f"Could not delete message: {e}")
+
 # Start command
 def start(update: Update, context: CallbackContext) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
+    
+    # Delete user's message for privacy
+    delete_message(context, update.effective_chat.id, update.message.message_id)
     
     if user_id not in user_data:
         user_data[user_id] = {
@@ -86,6 +113,9 @@ def handle_menu(update: Update, context: CallbackContext) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
+    
+    # Delete user's message for privacy
+    delete_message(context, update.effective_chat.id, update.message.message_id)
     
     # Handle different states
     if user_id in user_states:
@@ -136,7 +166,7 @@ def handle_menu(update: Update, context: CallbackContext) -> None:
         handle_shopping_list_menu(update, context)
     elif text == '🏠 Главная':
         start(update, context)
-    elif text.startswith('🏦 '):
+    elif text.startswith(' Мос '):
         # Handle piggy bank selection
         piggy_name = text[2:].strip()
         handle_piggy_bank_actions(update, context, piggy_name)
@@ -333,7 +363,7 @@ def handle_piggy_bank_menu(update: Update, context: CallbackContext) -> None:
     # Add existing piggy banks
     if user_id in user_data and user_data[user_id]['piggy_banks']:
         for name in user_data[user_id]['piggy_banks']:
-            keyboard.append([{'text': f'🏦 {name}'}])
+            keyboard.append([{'text': f' Мос {name}'}])
     
     keyboard.append([{'text': '🏠 Главная'}])
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
@@ -360,12 +390,12 @@ def handle_piggy_bank_actions(update: Update, context: CallbackContext, piggy_na
     keyboard = [
         [{'text': '💰 Положить'}, {'text': '💸 Снять'}],
         [{'text': '✏️ Редактировать'}, {'text': '❌ Удалить'}],
-        [{'text': '🏦 Копилка'}, {'text': '🏠 Главная'}]
+        [{'text': ' Мос Копилка'}, {'text': '🏠 Главная'}]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
     update.message.reply_text(
-        f'🏦 Копилка: {piggy_name}\n'
+        f' Мос Копилка: {piggy_name}\n'
         f'Цель: {target} руб.\n'
         f'Накоплено: {current} руб. ({percentage}%)\n\n'
         f'Выберите действие:',
@@ -440,7 +470,7 @@ def handle_piggy_target_input(update: Update, context: CallbackContext) -> None:
         update.message.reply_text(
             f'✅ Копилка "{piggy_name}" создана!\nЦелевая сумма: {target_amount} руб.',
             reply_markup=ReplyKeyboardMarkup([
-                [{'text': ' Bakan Копилка'}],
+                [{'text': ' Мос Копилка'}],
                 [{'text': '🏠 Главная'}]
             ], resize_keyboard=True)
         )
@@ -561,7 +591,7 @@ def handle_edit_piggy_bank(update: Update, context: CallbackContext) -> None:
     
     keyboard = [
         [{'text': '✏️ Изменить название'}, {'text': '✏️ Изменить сумму'}],
-        [{'text': f' Bakan {piggy_name}'}, {'text': '🏠 Главная'}]
+        [{'text': f' Мос {piggy_name}'}, {'text': '🏠 Главная'}]
     ]
     reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
     
@@ -590,7 +620,7 @@ def handle_delete_piggy_bank(update: Update, context: CallbackContext) -> None:
         update.message.reply_text(
             f'✅ Копилка "{piggy_name}" удалена',
             reply_markup=ReplyKeyboardMarkup([
-                [{'text': ' Bakan Копилка'}],
+                [{'text': ' Мос Копилка'}],
                 [{'text': '🏠 Главная'}]
             ], resize_keyboard=True)
         )
@@ -663,8 +693,8 @@ def handle_edit_piggy_name_input(update: Update, context: CallbackContext) -> No
         update.message.reply_text(
             f'✅ Название копилки изменено с "{old_name}" на "{new_name}"',
             reply_markup=ReplyKeyboardMarkup([
-                [{'text': f' Bakan {new_name}'}],
-                [{'text': ' Bakan Копилка'}, {'text': '🏠 Главная'}]
+                [{'text': f' Мос {new_name}'}],
+                [{'text': ' Мос Копилка'}, {'text': '🏠 Главная'}]
             ], resize_keyboard=True)
         )
     else:
