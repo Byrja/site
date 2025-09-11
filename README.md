@@ -50,7 +50,7 @@ cp .env.example .env
    - Добавьте его в .env файл как `ENCRYPTION_KEY=ваш_сгенерированный_ключ`
    - Измените ключ шифрования в [security.py](file:///d:/Users/br/Documents/GitHub/site/security.py) на случайную 32-байтную строку
 
-6. Запустите бота:
+6. Запустите бота с помощью лаунчера [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat) (на Windows) или вручную:
 ```bash
 python bot.py
 ```
@@ -65,6 +65,20 @@ python bot.py
 - Для production среды рекомендуется изменить ключ шифрования на случайную 32-байтную строку
 - Логи записываются в файлы и содержат только техническую информацию (без чувствительных данных)
 
+## Использование лаунчера (Windows)
+
+Для удобного управления ботом на Windows используйте лаунчер [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat):
+
+1. Дважды щелкните по файлу [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat)
+2. Выберите нужное действие в меню:
+   - Запуск бота
+   - Остановка бота
+   - Перезапуск бота
+   - Обновление из GitHub
+   - Проверка логов
+   - Установка зависимостей
+   - Проверка конфигурации
+
 ## Использование
 
 1. Найдите своего бота в Telegram
@@ -78,8 +92,12 @@ python bot.py
 - [security.py](file:///d:/Users/br/Documents/GitHub/site/security.py) - Функции безопасности и шифрования
 - [requirements.txt](file:///d:/Users/br/Documents/GitHub/site/requirements.txt) - Зависимости проекта
 - [.env.example](file:///d:/Users/br/Documents/GitHub/site/.env.example) - Пример файла переменных окружения
+- [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat) - Лаунчер для Windows
+- [check_config.py](file:///d:/Users/br/Documents/GitHub/site/check_config.py) - Скрипт проверки конфигурации
+- [generate_key.py](file:///d:/Users/br/Documents/GitHub/site/generate_key.py) - Скрипт генерации ключа шифрования
 - [user_data.json](file:///d:/Users/br/Documents/GitHub/site/user_data.json) - Данные пользователей (создается автоматически)
 - [user_states.json](file:///d:/Users/br/Documents/GitHub/site/user_states.json) - Состояния пользователей (создается автоматически)
+- [bot.log](file:///d:/Users/br/Documents/GitHub/site/bot.log) - Логи бота (создается автоматически)
 
 ## Технологии
 

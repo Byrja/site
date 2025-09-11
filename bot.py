@@ -10,7 +10,12 @@ from security import encrypt_data, decrypt_data
 
 # Enable logging
 logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', 
+    level=logging.INFO,
+    handlers=[
+        logging.FileHandler("bot.log"),
+        logging.StreamHandler()
+    ]
 )
 
 logger = logging.getLogger(__name__)
@@ -852,23 +857,58 @@ def handle_clear_shopping_category(update: Update, context: CallbackContext) -> 
 
 # Main function
 def main() -> None:
-    # Create the Updater and pass it your bot's token.
-    updater = Updater(TELEGRAM_BOT_TOKEN)
+    # Set console window title
+    try:
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleTitleW("Финансовый Telegram Бот")
+    except:
+        pass  # Ignore if not on Windows
     
-    # Get the dispatcher to register handlers
-    dispatcher = updater.dispatcher
+    logger.info("Starting bot...")
     
-    # Register handlers
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_menu))
+    # Check if TELEGRAM_BOT_TOKEN is set
+    if not TELEGRAM_BOT_TOKEN:
+        logger.error("TELEGRAM_BOT_TOKEN is not set!")
+        print("ОШИБКА: Не установлен TELEGRAM_BOT_TOKEN!")
+        print("Пожалуйста, проверьте файл .env и убедитесь, что токен бота указан правильно.")
+        return
     
-    # Start the Bot
-    updater.start_polling()
+    if TELEGRAM_BOT_TOKEN == "your_telegram_bot_token_here":
+        logger.error("Default TELEGRAM_BOT_TOKEN detected!")
+        print("ОШИБКА: Обнаружен токен по умолчанию!")
+        print("Пожалуйста, измените TELEGRAM_BOT_TOKEN в файле .env на реальный токен бота.")
+        return
     
-    # Run the bot until you press Ctrl-C or the process receives SIGINT,
-    # SIGTERM or SIGABRT. This should be used most of the time, since
-    # start_polling() is non-blocking and will stop the bot gracefully.
-    updater.idle()
+    try:
+        # Create the Updater and pass it your bot's token.
+        updater = Updater(TELEGRAM_BOT_TOKEN)
+        
+        # Get the dispatcher to register handlers
+        dispatcher = updater.dispatcher
+        
+        # Register handlers
+        dispatcher.add_handler(CommandHandler("start", start))
+        dispatcher.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_menu))
+        
+        logger.info("Bot started successfully!")
+        print("Бот успешно запущен! Для остановки нажмите Ctrl+C")
+        
+        # Start the Bot
+        updater.start_polling()
+        
+        # Run the bot until you press Ctrl-C or the process receives SIGINT,
+        # SIGTERM or SIGABRT. This should be used most of the time, since
+        # start_polling() is non-blocking and will stop the bot gracefully.
+        updater.idle()
+        
+    except Exception as e:
+        logger.error(f"Failed to start bot: {e}")
+        print(f"ОШИБКА: Не удалось запустить бота: {e}")
+        print("Проверьте:")
+        print("1. Правильность токена бота в файле .env")
+        print("2. Подключение к интернету")
+        print("3. Доступность Telegram API")
+        return
 
 if __name__ == '__main__':
     main()
