@@ -4,8 +4,12 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 import json
 import os
 import requests
+import hmac
+import hashlib
+import time
 from datetime import datetime
-from config import TELEGRAM_BOT_TOKEN, USER_DATA_FILE, USER_STATES_FILE
+from urllib.parse import urlencode
+from config import TELEGRAM_BOT_TOKEN, USER_DATA_FILE, USER_STATES_FILE, BYBIT_API_URL, BYBIT_API_URL
 from security import encrypt_data, decrypt_data
 
 # Enable logging
@@ -65,6 +69,82 @@ def load_user_states():
 def save_user_states(states):
     with open(USER_STATES, 'w') as f:
         json.dump(states, f, indent=2)
+
+# Bybit API functions
+def get_bybit_signature(api_key, api_secret, params, timestamp):
+    """Generate signature for Bybit API request"""
+    param_str = f"{timestamp}{api_key}{''}{urlencode(sorted(params.items()))}"
+    signature = hmac.new(
+        bytes(api_secret, "utf-8"),
+        bytes(param_str, "utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    return signature
+
+def get_bybit_signature_v3(api_key, api_secret, method, url, params=None, data=None):
+    """Generate signature for Bybit V3 API request"""
+    timestamp = str(int(time.time() * 1000))
+    
+    if params:
+        query_string = urlencode(sorted(params.items()))
+    else:
+        query_string = ""
+    
+    if data:
+        body = json.dumps(data, separators=(",", ":"))
+    else:
+        body = ""
+    
+    signature_data = timestamp + api_key + query_string + body
+    signature = hmac.new(
+        bytes(api_secret, "utf-8"),
+        bytes(signature_data, "utf-8"),
+        hashlib.sha256
+    ).hexdigest()
+    
+    return signature, timestamp
+
+def get_bybit_wallet_balance(api_key, api_secret):
+    """Get wallet balance from Bybit API"""
+    return make_bybit_request(api_key, api_secret, "GET", "/v5/account/wallet-balance")
+
+def get_bybit_positions(api_key, api_secret):
+    """Get positions from Bybit API"""
+    params = {'category': 'linear'}
+    return make_bybit_request(api_key, api_secret, "GET", "/v5/position/list", params=params)
+
+def make_bybit_request(api_key, api_secret, method, endpoint, params=None, data=None):
+    """Make authenticated request to Bybit API"""
+    try:
+        url = f"{BYBIT_API_URL}{endpoint}"
+        
+        # Generate signature
+        signature, timestamp = get_bybit_signature_v3(api_key, api_secret, method, url, params, data)
+        
+        # Prepare headers
+        headers = {
+            "Content-Type": "application/json",
+            "X-BAPI-API-KEY": api_key,
+            "X-BAPI-TIMESTAMP": timestamp,
+            "X-BAPI-SIGN": signature
+        }
+        
+        # Make API request
+        if method.upper() == "GET":
+            response = requests.get(url, params=params, headers=headers)
+        elif method.upper() == "POST":
+            response = requests.post(url, params=params, json=data, headers=headers)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+        
+        if response.status_code == 200:
+            return response.json()
+        else:
+            logger.error(f"Bybit API error: {response.status_code} - {response.text}")
+            return None
+    except Exception as e:
+        logger.error(f"Error making Bybit request: {e}")
+        return None
 
 # Main menu
 def main_menu():
@@ -195,10 +275,10 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         
         # Handle API key input
         if state == 'WAITING_API_KEY':
-            handle_api_key_input(update, context)
+            await handle_api_key_input(update, context)
             return
         elif state == 'WAITING_API_SECRET':
-            handle_api_secret_input(update, context)
+            await handle_api_secret_input(update, context)
             return
         # Handle piggy bank creation
         elif state == 'CREATING_PIGGY_NAME':
@@ -209,7 +289,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         # Handle deposit/withdraw
         elif state.startswith('DEPOSITING_') or state.startswith('WITHDRAWING_'):
-            handle_amount_input(update, context)
+            await handle_amount_input(update, context)
             return
         # Handle shopping list item addition
         elif state.startswith('ADDING_ITEM_'):
@@ -217,10 +297,10 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             return
         # Handle piggy bank editing
         elif state.startswith('EDITING_PIGGY_NAME_'):
-            handle_edit_piggy_name_input(update, context)
+            await handle_edit_piggy_name_input(update, context)
             return
         elif state.startswith('EDITING_PIGGY_TARGET_'):
-            handle_edit_piggy_target_input(update, context)
+            await handle_edit_piggy_target_input(update, context)
             return
     
     # Clear user state if not in a specific flow
@@ -264,17 +344,17 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         handle_clear_shopping_category(update, context)
     elif text.startswith('💰 Положить'):
         # Extract piggy bank name from state or message
-        handle_deposit_to_piggy(update, context)
+        await handle_deposit_to_piggy(update, context)
     elif text.startswith('💸 Снять'):
-        handle_withdraw_from_piggy(update, context)
+        await handle_withdraw_from_piggy(update, context)
     elif text == '✏️ Редактировать':
-        handle_edit_piggy_bank(update, context)
+        await handle_edit_piggy_bank(update, context)
     elif text == '❌ Удалить':
-        handle_delete_piggy_bank(update, context)
+        await handle_delete_piggy_bank(update, context)
     elif text.startswith('✏️ Изменить название'):
-        handle_edit_piggy_name(update, context)
+        await handle_edit_piggy_name(update, context)
     elif text.startswith('✏️ Изменить сумму'):
-        handle_edit_piggy_target(update, context)
+        await handle_edit_piggy_target(update, context)
     elif text in [' mos Копилка', ' Мос Копилка', ' Мос Копилка']:  # Handle all variations
         await handle_piggy_bank_menu(update, context)
     elif text == ' mos Список покупок' or text == '🛒 Список покупок':  # Handle both variations
@@ -401,16 +481,54 @@ async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Here we would normally fetch data from Bybit API
-    # For now, let's show a placeholder message
-    await update.message.reply_text(
-        '📈 Активные сделки:\n\n'
-        'BTC/USDT: +2.5% ($120)\n'
-        'ETH/USDT: -1.2% (-$45)\n\n'
-        'Общий PnL: +$75\n\n'
-        'Выберите действие:',
-        reply_markup=reply_markup
-    )
+    # Fetch data from Bybit API
+    try:
+        api_key = user_data[user_id]['bybit_api_key']
+        api_secret = user_data[user_id]['bybit_api_secret']
+        
+        # Get positions
+        positions_data = get_bybit_positions(api_key, api_secret)
+        
+        if positions_data and positions_data.get('retCode') == 0:
+            positions = positions_data.get('result', {}).get('list', [])
+            
+            # Format positions for display
+            positions_text = ''
+            total_pnl = 0
+            
+            for position in positions:
+                if float(position.get('size', 0)) > 0:  # Only show open positions
+                    symbol = position.get('symbol', 'Unknown')
+                    pnl = float(position.get('unrealisedPnl', 0))
+                    roe = float(position.get('roe', 0)) * 100
+                    total_pnl += pnl
+                    
+                    positions_text += f'{symbol}: {roe:+.1f}% ({pnl:+.0f}$)\n'
+            
+            if not positions_text:
+                positions_text = 'Нет открытых позиций\n'
+                
+            await update.message.reply_text(
+                f'📈 Активные сделки:\n\n'
+                f'{positions_text}\n'
+                f'Общий PnL: {total_pnl:+.0f}$\n\n'
+                f'Выберите действие:',
+                reply_markup=reply_markup
+            )
+        else:
+            await update.message.reply_text(
+                '📈 Активные сделки:\n\n'
+                'Ошибка получения данных\n\n'
+                'Выберите действие:',
+                reply_markup=reply_markup
+            )
+    except Exception as e:
+        logger.error(f"Error fetching Bybit data: {e}")
+        await update.message.reply_text(
+            '❌ Ошибка при получении данных с Bybit. Пожалуйста, проверьте ваши API ключи.\n\n'
+            'Выберите действие:',
+            reply_markup=reply_markup
+        )
 
 # Handle crypto menu callback
 async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -438,16 +556,54 @@ async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE)
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    # Here we would normally fetch data from Bybit API
-    # For now, let's show a placeholder message
-    await query.edit_message_text(
-        '📈 Активные сделки:\n\n'
-        'BTC/USDT: +2.5% ($120)\n'
-        'ETH/USDT: -1.2% (-$45)\n\n'
-        'Общий PnL: +$75\n\n'
-        'Выберите действие:',
-        reply_markup=reply_markup
-    )
+    # Fetch data from Bybit API
+    try:
+        api_key = user_data[user_id]['bybit_api_key']
+        api_secret = user_data[user_id]['bybit_api_secret']
+        
+        # Get positions
+        positions_data = get_bybit_positions(api_key, api_secret)
+        
+        if positions_data and positions_data.get('retCode') == 0:
+            positions = positions_data.get('result', {}).get('list', [])
+            
+            # Format positions for display
+            positions_text = ''
+            total_pnl = 0
+            
+            for position in positions:
+                if float(position.get('size', 0)) > 0:  # Only show open positions
+                    symbol = position.get('symbol', 'Unknown')
+                    pnl = float(position.get('unrealisedPnl', 0))
+                    roe = float(position.get('roe', 0)) * 100
+                    total_pnl += pnl
+                    
+                    positions_text += f'{symbol}: {roe:+.1f}% ({pnl:+.0f}$)\n'
+            
+            if not positions_text:
+                positions_text = 'Нет открытых позиций\n'
+                
+            await query.edit_message_text(
+                f'📈 Активные сделки:\n\n'
+                f'{positions_text}\n'
+                f'Общий PnL: {total_pnl:+.0f}$\n\n'
+                f'Выберите действие:',
+                reply_markup=reply_markup
+            )
+        else:
+            await query.edit_message_text(
+                '📈 Активные сделки:\n\n'
+                'Ошибка получения данных\n\n'
+                'Выберите действие:',
+                reply_markup=reply_markup
+            )
+    except Exception as e:
+        logger.error(f"Error fetching Bybit data: {e}")
+        await query.edit_message_text(
+            '❌ Ошибка при получении данных с Bybit. Пожалуйста, проверьте ваши API ключи.\n\n'
+            'Выберите действие:',
+            reply_markup=reply_markup
+        )
 
 # Handle crypto submenu
 async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, selection: str) -> None:
@@ -466,17 +622,66 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
         
     elif selection == '💰 Баланс':
         # Show balance
-        await update.message.reply_text(
-            '💰 Баланс кошелька:\n\n'
-            'BTC: 0.0025 (≈ $150)\n'
-            'ETH: 0.5 (≈ $1,200)\n'
-            'USDT: 500\n'
-            'BNB: 1.2 (≈ $350)\n\n'
-            'Общий баланс: ≈ $2,200',
-            reply_markup=ReplyKeyboardMarkup([
-                [{'text': '🏠 Главная'}]
-            ], resize_keyboard=True)
-        )
+        user_id = str(update.effective_user.id)
+        user_data = load_user_data()
+        
+        try:
+            api_key = user_data[user_id]['bybit_api_key']
+            api_secret = user_data[user_id]['bybit_api_secret']
+            
+            # Get wallet balance
+            balance_data = get_bybit_wallet_balance(api_key, api_secret)
+            
+            if balance_data and balance_data.get('retCode') == 0:
+                balances = balance_data.get('result', {}).get('list', [{}])[0].get('coin', [])
+                
+                # Format balances for display
+                balance_text = ''
+                total_balance = 0
+                
+                for coin in balances:
+                    coin_name = coin.get('coin', 'Unknown')
+                    coin_balance = float(coin.get('walletBalance', 0))
+                    coin_usd_value = float(coin.get('usdValue', 0))
+                    total_balance += coin_usd_value
+                    
+                    if coin_balance > 0:
+                        balance_text += f'{coin_name}: {coin_balance:.4f}'
+                        if coin_usd_value > 0:
+                            balance_text += f' (≈ ${coin_usd_value:.0f})\n'
+                        else:
+                            balance_text += '\n'
+                
+                if not balance_text:
+                    balance_text = 'Кошелек пуст\n'
+                    
+                await update.message.reply_text(
+                    f'💰 Баланс кошелька:\n\n'
+                    f'{balance_text}\n'
+                    f'Общий баланс: ≈ ${total_balance:.0f}',
+                    reply_markup=ReplyKeyboardMarkup([
+                        [{'text': '🏠 Главная'}]
+                    ], resize_keyboard=True)
+                )
+            else:
+                await update.message.reply_text(
+                    '💰 Баланс кошелька:\n\n'
+                    'Ошибка получения данных\n\n'
+                    'Общий баланс: ≈ $0',
+                    reply_markup=ReplyKeyboardMarkup([
+                        [{'text': '🏠 Главная'}]
+                    ], resize_keyboard=True)
+                )
+        except Exception as e:
+            logger.error(f"Error fetching Bybit balance: {e}")
+            await update.message.reply_text(
+                '💰 Баланс кошелька:\n\n'
+                '❌ Ошибка при получении данных с Bybit\n\n'
+                'Общий баланс: ≈ $0',
+                reply_markup=ReplyKeyboardMarkup([
+                    [{'text': '🏠 Главная'}]
+                ], resize_keyboard=True)
+            )
         
     elif selection == '⚙️ Настройки':
         # Settings menu
@@ -532,7 +737,7 @@ async def handle_enter_api_keys_callback(query, context: ContextTypes.DEFAULT_TY
     )
 
 # Handle API key input
-def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -558,7 +763,7 @@ def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         '✅ API ключ сохранен!\nТеперь введите API Secret:',
         reply_markup=reply_markup
     )
@@ -568,7 +773,7 @@ def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     save_user_states(user_states)
 
 # Handle API secret input
-def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -595,7 +800,7 @@ def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         '✅ API Secret сохранен!\nНастройка Bybit завершена.\n\nТеперь вы можете использовать функции криптовалютного раздела.',
         reply_markup=reply_markup
     )
@@ -1016,20 +1221,20 @@ def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT
     )
 
 # Handle deposit to piggy bank
-def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
     
     # Get current piggy bank from state
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        await update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        await update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     user_states[user_id] = f'DEPOSITING_{piggy_name}'
@@ -1040,26 +1245,26 @@ def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f'💰 Введите сумму для пополнения копилки "{piggy_name}":',
         reply_markup=reply_markup
     )
 
 # Handle withdraw from piggy bank
-def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
     
     # Get current piggy bank from state
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        await update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        await update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     user_states[user_id] = f'WITHDRAWING_{piggy_name}'
@@ -1070,13 +1275,13 @@ def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAULT_TYP
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f'💸 Введите сумму для снятия из копилки "{piggy_name}":',
         reply_markup=reply_markup
     )
 
 # Handle amount input
-def handle_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1097,24 +1302,24 @@ def handle_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         del user_states[user_id]
         save_user_states(user_states)
         
-        handle_piggy_bank_actions(update, context, piggy_name)
+        await handle_piggy_bank_actions(update, context, piggy_name)
     except ValueError:
-        update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
+        await update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
 
 # Handle edit piggy bank
-def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
     
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        await update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        await update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     keyboard = [
@@ -1123,31 +1328,31 @@ def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f'Редактирование копилки "{piggy_name}"\n\nВыберите действие:',
         reply_markup=reply_markup
     )
 
 # Handle edit piggy bank name
-def handle_edit_piggy_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_edit_piggy_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
     
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        await update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        await update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     user_states[user_id] = f'EDITING_PIGGY_NAME_{piggy_name}'
     save_user_states(user_states)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f'📝 Введите новое название для копилки "{piggy_name}":',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
@@ -1155,7 +1360,7 @@ def handle_edit_piggy_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     )
 
 # Handle edit piggy bank name input
-def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1167,7 +1372,7 @@ def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_T
     old_name = user_states[user_id].replace('EDITING_PIGGY_NAME_', '')
     
     if user_id not in user_data or old_name not in user_data[user_id]['piggy_banks']:
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        await update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     user_data[user_id]['piggy_banks'][new_name] = user_data[user_id]['piggy_banks'].pop(old_name)
@@ -1176,28 +1381,28 @@ def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_T
     del user_states[user_id]
     save_user_states(user_states)
     
-    handle_piggy_bank_actions(update, context, new_name)
+    await handle_piggy_bank_actions(update, context, new_name)
 
 # Handle edit piggy bank target
-def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
     
     if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        await update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
     
     if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        await update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     user_states[user_id] = f'EDITING_PIGGY_TARGET_{piggy_name}'
     save_user_states(user_states)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f'🎯 Введите новую целевую сумму для копилки "{piggy_name}":',
         reply_markup=InlineKeyboardMarkup([
             [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
@@ -1205,7 +1410,7 @@ def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT_TYPE)
     )
 
 # Handle edit piggy bank target input
-def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1218,7 +1423,7 @@ def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT
         piggy_name = user_states[user_id].replace('EDITING_PIGGY_TARGET_', '')
         
         if user_id not in user_data or piggy_name not in user_data[user_id]['piggy_banks']:
-            update.message.reply_text('❌ Ошибка: копилка не найдена')
+            await update.message.reply_text('❌ Ошибка: копилка не найдена')
             return
         
         user_data[user_id]['piggy_banks'][piggy_name]['target'] = new_target
@@ -1227,29 +1432,29 @@ def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT
         del user_states[user_id]
         save_user_states(user_states)
         
-        handle_piggy_bank_actions(update, context, piggy_name)
+        await handle_piggy_bank_actions(update, context, piggy_name)
     except ValueError:
-        update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
+        await update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
 
 # Handle delete piggy bank
-def handle_delete_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_delete_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
     if user_id not in user_data:
-        update.message.reply_text('❌ Ошибка: не выбрана копилка')
+        await update.message.reply_text('❌ Ошибка: не выбрана копилка')
         return
     
     piggy_name = user_data[user_id]['piggy_banks'].keys()
     
     if not piggy_name:
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
+        await update.message.reply_text('❌ Ошибка: копилка не найдена')
         return
     
     del user_data[user_id]['piggy_banks']
     save_user_data(user_data)
     
-    update.message.reply_text('✅ Копилка удалена', reply_markup=main_menu())
+    await update.message.reply_text('✅ Копилка удалена', reply_markup=main_menu())
 
 # Handle callback queries for inline keyboards
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

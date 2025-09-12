@@ -64,19 +64,26 @@ def diagnose_issues():
         return False
     
     # Check if bot is running
-    import psutil
-    bot_running = False
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
-        try:
-            if 'bot.py' in ' '.join(proc.info['cmdline'] or []):
-                print(f"✅ Бот запущен (PID: {proc.info['pid']})")
-                bot_running = True
-                break
-        except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-            pass
-    
-    if not bot_running:
-        print("⚠️  Бот не запущен")
+    try:
+        import psutil
+        bot_running = False
+        bot_processes = []
+        for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+            try:
+                if proc.info['cmdline'] and 'bot.py' in ' '.join(proc.info['cmdline']):
+                    bot_processes.append(proc.info)
+                    bot_running = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        
+        if bot_running:
+            print("✅ Бот запущен")
+            for proc in bot_processes:
+                print(f"   - PID: {proc['pid']}")
+        else:
+            print("⚠️  Бот не запущен")
+    except ImportError:
+        print("⚠️  psutil не установлен, невозможно проверить запущенные процессы")
     
     print("\nДиагностика завершена!")
     return True

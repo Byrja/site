@@ -1,5 +1,53 @@
 #!/usr/bin/env python3
 """
+Simple test script to verify bot functionality
+"""
+
+import os
+import sys
+import time
+from config import TELEGRAM_BOT_TOKEN
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a message with inline buttons when the command /start is issued."""
+    keyboard = [
+        [InlineKeyboardButton("Тестовая кнопка 1", callback_data="test1")],
+        [InlineKeyboardButton("Тестовая кнопка 2", callback_data="test2")],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await update.message.reply_text(
+        "Тест бота - проверка работы inline кнопок:",
+        reply_markup=reply_markup
+    )
+
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handle button presses."""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "test1":
+        await query.edit_message_text(text="Вы нажали кнопку 1")
+    elif query.data == "test2":
+        await query.edit_message_text(text="Вы нажали кнопку 2")
+
+def main() -> None:
+    """Run the bot."""
+    # Create the Application and pass it your bot's token.
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+
+    # Register handlers
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
+
+    # Run the bot until the user presses Ctrl-C
+    application.run_polling()
+
+if __name__ == "__main__":
+    main()
+"""
 Simple test script to check if bot can start properly
 """
 

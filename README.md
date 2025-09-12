@@ -95,13 +95,15 @@ python bot.py
 
 1. Дважды щелкните по файлу [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat)
 2. Выберите нужное действие в меню:
-   - Запуск бота (автоматически устанавливает зависимости)
+   - Запуск бота (автоматически устанавливает зависимости и останавливает предыдущие экземпляры)
    - Остановка бота
    - Перезапуск бота (автоматически устанавливает зависимости)
    - Обновление из GitHub (автоматически устанавливает зависимости)
    - Проверка логов
    - Установка/обновление зависимостей
    - Проверка конфигурации
+
+**Важно:** Лаунчер автоматически останавливает предыдущие экземпляры бота перед запуском нового, чтобы избежать конфликтов.
 
 ## Использование
 
@@ -111,25 +113,19 @@ python bot.py
 
 Бот теперь использует inline-меню, которые прикрепляются к сообщениям, что делает интерфейс более удобным и современным.
 
+## Решение проблем
+
+Если кнопки не работают:
+1. Убедитесь, что запущен только один экземпляр бота
+2. Проверьте логи с помощью лаунчера
+3. Используйте функцию диагностики в лаунчере
+4. Убедитесь, что токен бота указан правильно в файле .env
+
 ## Структура проекта
 
 - [bot.py](file:///d:/Users/br/Documents/GitHub/site/bot.py) - Основной файл бота
 - [config.py](file:///d:/Users/br/Documents/GitHub/site/config.py) - Конфигурация проекта
-- [security.py](file:///d:/Users/br/Documents/GitHub/site/security.py) - Функции безопасности и шифрования
-- [requirements.txt](file:///d:/Users/br/Documents/GitHub/site/requirements.txt) - Зависимости проекта
-- [.env.example](file:///d:/Users/br/Documents/GitHub/site/.env.example) - Пример файла переменных окружения
 - [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat) - Лаунчер для Windows
 - [check_config.py](file:///d:/Users/br/Documents/GitHub/site/check_config.py) - Скрипт проверки конфигурации
-- [generate_key.py](file:///d:/Users/br/Documents/GitHub/site/generate_key.py) - Скрипт генерации ключа шифрования
-- [user_data.json](file:///d:/Users/br/Documents/GitHub/site/user_data.json) - Данные пользователей (создается автоматически)
-- [user_states.json](file:///d:/Users/br/Documents/GitHub/site/user_states.json) - Состояния пользователей (создается автоматически)
-- [bot.log](file:///d:/Users/br/Documents/GitHub/site/bot.log) - Логи бота (создается автоматически)
-
-## Технологии
-
-- Python 3.8-3.11
-- python-telegram-bot 20.0
-- python-dotenv для управления переменными окружения
-- cryptography для шифрования чувствительных данных
-- JSON для хранения данных
-- Inline-кнопки Telegram для улучшенного UX
+- [requirements.txt](file:///d:/Users/br/Documents/GitHub/site/requirements.txt) - Зависимости проекта
+- [.env.example](file:///d:/Users/br/Documents/GitHub/site/.env.example) - Пример файла конфигурации

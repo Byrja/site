@@ -53,6 +53,8 @@ def encrypt_data(data: str) -> str:
         return base64.urlsafe_b64encode(encrypted_data).decode()
     except Exception as e:
         print(f"Encryption error: {e}")
+        import traceback
+        traceback.print_exc()
         return ""
 
 def decrypt_data(encrypted_data: str) -> str:
@@ -73,6 +75,8 @@ def decrypt_data(encrypted_data: str) -> str:
         return decrypted_data.decode()
     except Exception as e:
         print(f"Decryption error: {e}")
+        import traceback
+        traceback.print_exc()
         return ""
 
 def generate_secure_key():

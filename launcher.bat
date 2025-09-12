@@ -19,10 +19,11 @@ echo 5. Проверить логи
 echo 6. Установить/обновить зависимости
 echo 7. Проверить конфигурацию
 echo 8. Диагностика проблем
-echo 9. Выход
+echo 9. Помощь по устранению неполадок
+echo 10. Выход
 echo.
 echo ================================
-set /p choice="Выберите действие (1-9): "
+set /p choice="Выберите действие (1-10): "
 
 if "%choice%"=="1" goto start_bot
 if "%choice%"=="2" goto stop_bot
@@ -32,7 +33,8 @@ if "%choice%"=="5" goto check_logs
 if "%choice%"=="6" goto install_deps
 if "%choice%"=="7" goto check_config
 if "%choice%"=="8" goto diagnose_issues
-if "%choice%"=="9" goto exit
+if "%choice%"=="9" goto troubleshooting
+if "%choice%"=="10" goto exit
 goto menu
 
 :start_bot
@@ -40,13 +42,19 @@ cls
 echo Запуск бота...
 echo.
 echo Проверка зависимостей...
-pip install -r requirements.txt >nul 2>&1
+"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt >nul 2>&1
 if %errorlevel% neq 0 (
     echo ОШИБКА: Не удалось установить зависимости!
     echo Попробуйте выбрать пункт 6 для ручной установки.
     echo.
 )
-start "Финансовый Telegram Бот" /min python bot.py
+echo Остановка предыдущих экземпляров бота...
+taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
+taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
+wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
+powershell "Get-Process python | Where-Object {$_.MainWindowTitle -like '*Финансовый Telegram Бот*'} | Stop-Process -Force" >nul 2>&1
+timeout /t 2 /nobreak >nul
+start "Финансовый Telegram Бот" /min "C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" bot.py
 echo Бот запущен в фоновом режиме.
 timeout /t 2 /nobreak >nul
 goto menu
@@ -68,19 +76,20 @@ goto menu
 cls
 echo Перезапуск бота...
 echo.
+echo Остановка предыдущих экземпляров бота...
 taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
 taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
 wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
 powershell "Get-Process python | Where-Object {$_.MainWindowTitle -like '*Финансовый Telegram Бот*'} | Stop-Process -Force" >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo Проверка зависимостей...
-pip install -r requirements.txt >nul 2>&1
+"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt >nul 2>&1
 if %errorlevel% neq 0 (
     echo ОШИБКА: Не удалось установить зависимости!
     echo Попробуйте выбрать пункт 6 для ручной установки.
     echo.
 )
-start "Финансовый Telegram Бот" /min python bot.py
+start "Финансовый Telegram Бот" /min "C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" bot.py
 echo Бот перезапущен.
 timeout /t 2 /nobreak >nul
 goto menu
@@ -100,7 +109,7 @@ if %errorlevel% neq 0 (
     echo.
     echo Бот успешно обновлен!
     echo Установка обновленных зависимостей...
-    pip install -r requirements.txt
+    "C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
     if %errorlevel% neq 0 (
         echo.
         echo ОШИБКА: Не удалось установить зависимости!
@@ -132,7 +141,7 @@ goto menu
 cls
 echo Установка/обновление зависимостей...
 echo.
-pip install -r requirements.txt
+"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
     echo ОШИБКА: Не удалось установить зависимости!
@@ -153,7 +162,7 @@ goto menu
 cls
 echo Проверка конфигурации...
 echo.
-python check_config.py
+"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" check_config.py
 echo.
 pause
 goto menu
@@ -162,7 +171,28 @@ goto menu
 cls
 echo Диагностика проблем...
 echo.
-python check_config.py --diagnose
+"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" check_config.py --diagnose
+echo.
+pause
+goto menu
+
+:troubleshooting
+cls
+echo Помощь по устранению неполадок:
+echo ================================
+echo.
+echo Если кнопки не работают:
+echo 1. Убедитесь, что запущен только один экземпляр бота
+echo 2. Используйте пункт "Остановить бота", затем "Запустить бота"
+echo 3. Проверьте логи на наличие ошибок
+echo 4. Убедитесь, что токен бота указан правильно
+echo.
+echo Если бот не запускается:
+echo 1. Проверьте установку зависимостей (пункт 6)
+echo 2. Проверьте конфигурацию (пункт 7)
+echo 3. Проверьте права доступа к файлам данных
+echo.
+echo Подробное руководство доступно в файле TROUBLESHOOTING.md
 echo.
 pause
 goto menu
