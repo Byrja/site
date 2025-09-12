@@ -17,9 +17,22 @@ def generate_encryption_key():
     # Try to get key from environment variable
     env_key = os.getenv("ENCRYPTION_KEY")
     if env_key:
-        # Convert from hex string to bytes
+        # If env_key is a hex string, convert it to bytes and then to Fernet key
         try:
-            return base64.urlsafe_b64encode(bytes.fromhex(env_key))
+            # First try to treat it as a hex string
+            key_bytes = bytes.fromhex(env_key)
+            if len(key_bytes) == 32:
+                # If it's 32 bytes, encode it as base64 for Fernet
+                return base64.urlsafe_b64encode(key_bytes)
+        except Exception:
+            pass
+        
+        # If that fails, try to treat it as a base64 encoded key
+        try:
+            key_bytes = base64.urlsafe_b64decode(env_key)
+            if len(key_bytes) == 32:
+                # If it's a valid base64 encoded 32-byte key, use it as is
+                return env_key.encode() if isinstance(env_key, str) else env_key
         except Exception:
             pass
     
@@ -30,9 +43,11 @@ def generate_encryption_key():
 ENCRYPTION_KEY = generate_encryption_key()
 try:
     cipher_suite = Fernet(ENCRYPTION_KEY)
-except ValueError:
+except ValueError as e:
+    print(f"Error initializing cipher suite: {e}")
     # If the key is still invalid, generate a proper one
     proper_key = Fernet.generate_key()
+    ENCRYPTION_KEY = proper_key
     cipher_suite = Fernet(proper_key)
 
 # Functions for encryption/decryption
@@ -85,6 +100,9 @@ def generate_secure_key():
     Generate a cryptographically secure random key for production use
     
     Returns:
-        str: Hex representation of a 32-byte random key
+        str: Base64 encoded 32-byte random key suitable for Fernet
     """
-    return secrets.token_hex(32)
+    # Generate a proper Fernet key
+    key = Fernet.generate_key()
+    # Return as string (base64 encoded)
+    return key.decode()
