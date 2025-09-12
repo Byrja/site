@@ -36,9 +36,21 @@ def load_user_data():
             # Decrypt API keys when loading
             for user_id in data:
                 if 'bybit_api_key' in data[user_id]:
-                    data[user_id]['bybit_api_key'] = decrypt_data(data[user_id]['bybit_api_key'])
+                    decrypted_key = decrypt_data(data[user_id]['bybit_api_key'])
+                    # Check if decryption failed
+                    if decrypted_key == "__DECRYPTION_FAILED__":
+                        # Reset the key if decryption failed
+                        data[user_id]['bybit_api_key'] = ''
+                    else:
+                        data[user_id]['bybit_api_key'] = decrypted_key
                 if 'bybit_api_secret' in data[user_id]:
-                    data[user_id]['bybit_api_secret'] = decrypt_data(data[user_id]['bybit_api_secret'])
+                    decrypted_secret = decrypt_data(data[user_id]['bybit_api_secret'])
+                    # Check if decryption failed
+                    if decrypted_secret == "__DECRYPTION_FAILED__":
+                        # Reset the secret if decryption failed
+                        data[user_id]['bybit_api_secret'] = ''
+                    else:
+                        data[user_id]['bybit_api_secret'] = decrypted_secret
             return data
     else:
         return {}
@@ -50,9 +62,13 @@ def save_user_data(data):
     for user_id in data:
         data_to_save[user_id] = data[user_id].copy()
         if 'bybit_api_key' in data_to_save[user_id]:
-            data_to_save[user_id]['bybit_api_key'] = encrypt_data(data_to_save[user_id]['bybit_api_key'])
+            # Don't encrypt the error marker
+            if data_to_save[user_id]['bybit_api_key'] != "__DECRYPTION_FAILED__":
+                data_to_save[user_id]['bybit_api_key'] = encrypt_data(data_to_save[user_id]['bybit_api_key'])
         if 'bybit_api_secret' in data_to_save[user_id]:
-            data_to_save[user_id]['bybit_api_secret'] = encrypt_data(data_to_save[user_id]['bybit_api_secret'])
+            # Don't encrypt the error marker
+            if data_to_save[user_id]['bybit_api_secret'] != "__DECRYPTION_FAILED__":
+                data_to_save[user_id]['bybit_api_secret'] = encrypt_data(data_to_save[user_id]['bybit_api_secret'])
     
     with open(DATA_FILE, 'w') as f:
         json.dump(data_to_save, f, indent=2)
@@ -80,6 +96,7 @@ def get_bybit_signature(api_key, api_secret, params, timestamp):
         hashlib.sha256
     ).hexdigest()
     return signature
+
 
 def get_bybit_signature_v3(api_key, api_secret, method, url, params=None, data=None):
     """Generate signature for Bybit V3 API request"""
@@ -455,20 +472,39 @@ async def handle_help_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -
         reply_markup=reply_markup
     )
 
-# Handle crypto menu
-async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(update.effective_user.id)
+# Handle crypto menu callback
+async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(query.from_user.id)
     user_data = load_user_data()
     
     # Check if API keys are set
-    if not user_data.get(user_id, {}).get('bybit_api_key') or not user_data.get(user_id, {}).get('bybit_api_secret'):
+    api_key = user_data.get(user_id, {}).get('bybit_api_key')
+    api_secret = user_data.get(user_id, {}).get('bybit_api_secret')
+    
+    # Check for decryption errors
+    if api_key == "__DECRYPTION_FAILED__" or api_secret == "__DECRYPTION_FAILED__":
+        # Reset the keys and prompt user to re-enter them
+        reset_user_api_keys(user_id)
         keyboard = [
             [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
             [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        await update.message.reply_text(
+        await query.edit_message_text(
+            '❌ Ошибка расшифровки API ключей. Пожалуйста, введите ваши API ключи заново:',
+            reply_markup=reply_markup
+        )
+        return
+    
+    if not api_key or not api_secret:
+        keyboard = [
+            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
             'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, введите ваши API ключи:',
             reply_markup=reply_markup
         )
@@ -483,9 +519,6 @@ async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     # Fetch data from Bybit API
     try:
-        api_key = user_data[user_id]['bybit_api_key']
-        api_secret = user_data[user_id]['bybit_api_secret']
-        
         # Get positions
         positions_data = get_bybit_positions(api_key, api_secret)
         
@@ -508,7 +541,7 @@ async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if not positions_text:
                 positions_text = 'Нет открытых позиций\n'
                 
-            await update.message.reply_text(
+            await query.edit_message_text(
                 f'📈 Активные сделки:\n\n'
                 f'{positions_text}\n'
                 f'Общий PnL: {total_pnl:+.0f}$\n\n'
@@ -516,7 +549,7 @@ async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 reply_markup=reply_markup
             )
         else:
-            await update.message.reply_text(
+            await query.edit_message_text(
                 '📈 Активные сделки:\n\n'
                 'Ошибка получения данных\n\n'
                 'Выберите действие:',
@@ -524,11 +557,151 @@ async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
     except Exception as e:
         logger.error(f"Error fetching Bybit data: {e}")
-        await update.message.reply_text(
+        await query.edit_message_text(
             '❌ Ошибка при получении данных с Bybit. Пожалуйста, проверьте ваши API ключи.\n\n'
             'Выберите действие:',
             reply_markup=reply_markup
         )
+
+# Handle crypto stats callback
+async def handle_crypto_stats_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    # Check if API keys are set
+    if not user_data.get(user_id, {}).get('bybit_api_key') or not user_data.get(user_id, {}).get('bybit_api_secret'):
+        keyboard = [
+            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, введите ваши API ключи:',
+            reply_markup=reply_markup
+        )
+        return
+    
+    # If API keys are set, show stats menu
+    keyboard = [
+        [InlineKeyboardButton('📅 День', callback_data='stats_day'), InlineKeyboardButton('📆 Неделя', callback_data='stats_week')],
+        [InlineKeyboardButton('🗓 Месяц', callback_data='stats_month'), InlineKeyboardButton('FullYear', callback_data='stats_year')],
+        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        '📊 Статистика:\n\n'
+        'Выберите период:',
+        reply_markup=reply_markup
+    )
+
+# Handle crypto balance callback
+async def handle_crypto_balance_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    # Check if API keys are set
+    if not user_data.get(user_id, {}).get('bybit_api_key') or not user_data.get(user_id, {}).get('bybit_api_secret'):
+        keyboard = [
+            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, введите ваши API ключи:',
+            reply_markup=reply_markup
+        )
+        return
+    
+    # Fetch data from Bybit API
+    try:
+        api_key = user_data[user_id]['bybit_api_key']
+        api_secret = user_data[user_id]['bybit_api_secret']
+        
+        # Get wallet balance
+        balance_data = get_bybit_wallet_balance(api_key, api_secret)
+        
+        if balance_data and balance_data.get('retCode') == 0:
+            balances = balance_data.get('result', {}).get('list', [{}])[0].get('coin', [])
+            
+            # Format balances for display
+            balance_text = ''
+            total_balance = 0
+            
+            for coin in balances:
+                coin_name = coin.get('coin', 'Unknown')
+                coin_balance = float(coin.get('walletBalance', 0))
+                coin_usd_value = float(coin.get('usdValue', 0))
+                total_balance += coin_usd_value
+                
+                if coin_balance > 0:
+                    balance_text += f'{coin_name}: {coin_balance:.4f}'
+                    if coin_usd_value > 0:
+                        balance_text += f' (≈ ${coin_usd_value:.0f})\n'
+                    else:
+                        balance_text += '\n'
+            
+            if not balance_text:
+                balance_text = 'Кошелек пуст\n'
+                
+            keyboard = [
+                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+                
+            await query.edit_message_text(
+                f'💰 Баланс кошелька:\n\n'
+                f'{balance_text}\n'
+                f'Общий баланс: ≈ ${total_balance:.0f}',
+                reply_markup=reply_markup
+            )
+        else:
+            keyboard = [
+                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                '💰 Баланс кошелька:\n\n'
+                'Ошибка получения данных\n\n'
+                'Общий баланс: ≈ $0',
+                reply_markup=reply_markup
+            )
+    except Exception as e:
+        logger.error(f"Error fetching Bybit balance: {e}")
+        keyboard = [
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            '💰 Баланс кошелька:\n\n'
+            '❌ Ошибка при получении данных с Bybit\n\n'
+            'Общий баланс: ≈ $0',
+            reply_markup=reply_markup
+        )
+
+# Handle crypto settings callback
+async def handle_crypto_settings_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    keyboard = [
+        [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    api_info = "API ключи не установлены"
+    if user_data.get(user_id, {}).get('bybit_api_key'):
+        api_info = f"API Key установлен: {user_data[user_id]['bybit_api_key'][:5]}...{user_data[user_id]['bybit_api_key'][-5:]}"
+    
+    await query.edit_message_text(
+        f'⚙️ Настройки Bybit:\n\n'
+        f'{api_info}\n\n'
+        f'Выберите действие:',
+        reply_markup=reply_markup
+    )
 
 # Handle crypto menu callback
 async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -610,6 +783,25 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
+    # Check for decryption errors
+    api_key = user_data.get(user_id, {}).get('bybit_api_key')
+    api_secret = user_data.get(user_id, {}).get('bybit_api_secret')
+    
+    if api_key == "__DECRYPTION_FAILED__" or api_secret == "__DECRYPTION_FAILED__":
+        # Reset the keys and prompt user to re-enter them
+        reset_user_api_keys(user_id)
+        keyboard = [
+            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            '❌ Ошибка расшифровки API ключей. Пожалуйста, введите ваши API ключи заново:',
+            reply_markup=reply_markup
+        )
+        return
+    
     if selection == '📊 Статистика':
         # Statistics submenu
         keyboard = [
@@ -622,12 +814,16 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
         
     elif selection == '💰 Баланс':
         # Show balance
-        user_id = str(update.effective_user.id)
-        user_data = load_user_data()
-        
         try:
-            api_key = user_data[user_id]['bybit_api_key']
-            api_secret = user_data[user_id]['bybit_api_secret']
+            if not api_key or not api_secret:
+                await update.message.reply_text(
+                    'Для работы с криптой необходимо настроить API ключи Bybit.\n'
+                    'Пожалуйста, введите ваши API ключи в настройках.',
+                    reply_markup=ReplyKeyboardMarkup([
+                        [{'text': '🏠 Главная'}]
+                    ], resize_keyboard=True)
+                )
+                return
             
             # Get wallet balance
             balance_data = get_bybit_wallet_balance(api_key, api_secret)
@@ -657,6 +853,49 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
                     
                 await update.message.reply_text(
                     f'💰 Баланс кошелька:\n\n'
+                    f'{balance_text}\n'
+                    f'Общий баланс: ≈ ${total_balance:.0f}',
+                    reply_markup=ReplyKeyboardMarkup([
+                        [{'text': '🏠 Главная'}]
+                    ], resize_keyboard=True)
+                )
+            else:
+                await update.message.reply_text(
+                    '💰 Баланс кошелька:\n\n'
+                    'Ошибка получения данных\n\n'
+                    'Общий баланс: ≈ $0',
+                    reply_markup=ReplyKeyboardMarkup([
+                        [{'text': '🏠 Главная'}]
+                    ], resize_keyboard=True)
+                )
+        except Exception as e:
+            logger.error(f"Error fetching Bybit balance: {e}")
+            await update.message.reply_text(
+                '💰 Баланс кошелька:\n\n'
+                '❌ Ошибка при получении данных с Bybit\n\n'
+                'Общий баланс: ≈ $0',
+                reply_markup=ReplyKeyboardMarkup([
+                    [{'text': '🏠 Главная'}]
+                ], resize_keyboard=True)
+            )
+        
+    elif selection == '⚙️ Настройки':
+        # Settings menu
+        keyboard = [
+            [{'text': '🔑 Ввести API ключи'}],
+            [{'text': '🏠 Главная'}]
+        ]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        
+        api_info = ""
+        if user_data.get(user_id, {}).get('bybit_api_key'):
+            api_info = f"\nAPI Key: {user_data[user_id]['bybit_api_key'][:5]}...{user_data[user_id]['bybit_api_key'][-5:]}"
+        
+        await update.message.reply_text(
+            f'⚙️ Настройки Bybit:{api_info}\n\nВыберите действие:',
+            reply_markup=reply_markup
+        )
+
                     f'{balance_text}\n'
                     f'Общий баланс: ≈ ${total_balance:.0f}',
                     reply_markup=ReplyKeyboardMarkup([
@@ -789,7 +1028,15 @@ async def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_
         
     user_data[user_id]['bybit_api_secret'] = update.message.text
     save_user_data(user_data)
-    
+
+# Function to reset user API keys
+def reset_user_api_keys(user_id):
+    user_data = load_user_data()
+    if user_id in user_data:
+        user_data[user_id]['bybit_api_key'] = ''
+        user_data[user_id]['bybit_api_secret'] = ''
+        save_user_data(user_data)
+
     del user_states[user_id]
     save_user_states(user_states)
     
@@ -1480,6 +1727,15 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await handle_settings_menu_callback(query, context)
         elif data == 'help_menu':
             await handle_help_menu_callback(query, context)
+        elif data == 'crypto_stats':
+            # Handle crypto stats
+            await handle_crypto_stats_callback(query, context)
+        elif data == 'crypto_balance':
+            # Handle crypto balance
+            await handle_crypto_balance_callback(query, context)
+        elif data == 'crypto_settings':
+            # Handle crypto settings
+            await handle_crypto_settings_callback(query, context)
         elif data.startswith('piggy_bank_'):
             piggy_name = data.replace('piggy_bank_', '')
             await handle_piggy_bank_actions_callback(query, context, piggy_name)
@@ -1637,6 +1893,58 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                     await query.edit_message_text('❌ Ошибка: категория не найдена')
             else:
                 await query.edit_message_text('❌ Ошибка: некорректные данные')
+        elif data == 'stats_day':
+            # Handle daily stats
+            keyboard = [
+                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                '📈 Статистика за день:\n\n'
+                'BTC: +1.2% ($45)\n'
+                'ETH: -0.5% (-$12)\n\n'
+                'Общий PnL: +$33',
+                reply_markup=reply_markup
+            )
+        elif data == 'stats_week':
+            # Handle weekly stats
+            keyboard = [
+                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                '📈 Статистика за неделю:\n\n'
+                'BTC: +3.7% ($142)\n'
+                'ETH: +1.8% ($56)\n\n'
+                'Общий PnL: +$198',
+                reply_markup=reply_markup
+            )
+        elif data == 'stats_month':
+            # Handle monthly stats
+            keyboard = [
+                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                '📈 Статистика за месяц:\n\n'
+                'BTC: +12.4% ($480)\n'
+                'ETH: -2.3% (-$68)\n\n'
+                'Общий PnL: +$412',
+                reply_markup=reply_markup
+            )
+        elif data == 'stats_year':
+            # Handle yearly stats
+            keyboard = [
+                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                '📈 Статистика за год:\n\n'
+                'BTC: +156.7% ($5,890)\n'
+                'ETH: +89.2% ($2,134)\n\n'
+                'Общий PnL: +$8,024',
+                reply_markup=reply_markup
+            )
         else:
             logger.warning(f"Unknown callback_data: {data}")
             await query.edit_message_text("Неизвестная команда. Пожалуйста, попробуйте еще раз.")

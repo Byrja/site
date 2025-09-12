@@ -77,7 +77,8 @@ def decrypt_data(encrypted_data: str) -> str:
         print(f"Decryption error: {e}")
         import traceback
         traceback.print_exc()
-        return ""
+        # Return a special marker to indicate decryption failure
+        return "__DECRYPTION_FAILED__"
 
 def generate_secure_key():
     """
