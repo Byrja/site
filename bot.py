@@ -9,7 +9,7 @@ import hashlib
 import time
 from datetime import datetime
 from urllib.parse import urlencode
-from config import TELEGRAM_BOT_TOKEN, USER_DATA_FILE, USER_STATES_FILE, BYBIT_API_URL, BYBIT_API_URL
+from config import TELEGRAM_BOT_TOKEN, USER_DATA_FILE, USER_STATES_FILE, BYBIT_API_URL
 from security import encrypt_data, decrypt_data
 
 # Enable logging
@@ -102,7 +102,9 @@ def get_bybit_signature_v3(api_key, api_secret, method, url, params=None, data=N
     """Generate signature for Bybit V3 API request"""
     timestamp = str(int(time.time() * 1000))
     
-    if params:
+    # For GET requests, include params in signature string
+    # For POST requests, params are not included, only data body
+    if method.upper() == "GET" and params:
         query_string = urlencode(sorted(params.items()))
     else:
         query_string = ""
@@ -112,7 +114,11 @@ def get_bybit_signature_v3(api_key, api_secret, method, url, params=None, data=N
     else:
         body = ""
     
-    signature_data = timestamp + api_key + query_string + body
+    # Bybit signature format: timestamp + api_key + query_string (+ body for POST)
+    signature_data = timestamp + api_key + query_string
+    if method.upper() == "POST" and body:
+        signature_data += body
+    
     signature = hmac.new(
         bytes(api_secret, "utf-8"),
         bytes(signature_data, "utf-8"),
@@ -121,9 +127,11 @@ def get_bybit_signature_v3(api_key, api_secret, method, url, params=None, data=N
     
     return signature, timestamp
 
+# Bybit API functions for wallet balance and positions
 def get_bybit_wallet_balance(api_key, api_secret):
     """Get wallet balance from Bybit API"""
-    return make_bybit_request(api_key, api_secret, "GET", "/v5/account/wallet-balance")
+    params = {'accountType': 'UNIFIED'}
+    return make_bybit_request(api_key, api_secret, "GET", "/v5/account/wallet-balance", params=params)
 
 def get_bybit_positions(api_key, api_secret):
     """Get positions from Bybit API"""
@@ -135,18 +143,22 @@ def make_bybit_request(api_key, api_secret, method, endpoint, params=None, data=
     try:
         url = f"{BYBIT_API_URL}{endpoint}"
         
+        # Generate timestamp
+        timestamp = str(int(time.time() * 1000))
+        
         # Generate signature
-        signature, timestamp = get_bybit_signature_v3(api_key, api_secret, method, url, params, data)
+        signature, _ = get_bybit_signature_v3(api_key, api_secret, method, url, params, data)
         
         # Prepare headers
         headers = {
             "Content-Type": "application/json",
             "X-BAPI-API-KEY": api_key,
             "X-BAPI-TIMESTAMP": timestamp,
-            "X-BAPI-SIGN": signature
+            "X-BAPI-SIGN": signature,
+            "X-BAPI-RECV-WINDOW": "10000"  # Increased to 10 seconds
         }
         
-        # Make API request
+        # Make API request (recvWindow only in headers, not in params)
         if method.upper() == "GET":
             response = requests.get(url, params=params, headers=headers)
         elif method.upper() == "POST":
@@ -181,6 +193,8 @@ def delete_message(context: ContextTypes.DEFAULT_TYPE, chat_id: int, message_id:
 
 # Start command
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -279,6 +293,8 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
         
     text = update.message.text
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -344,7 +360,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await handle_piggy_bank_actions(update, context, piggy_name)
     elif text in ['📊 Статистика', '💰 Баланс', '⚙️ Настройки']:
         await handle_crypto_submenu(update, context, text)
-    elif text in ['🍎 Продукты', '杨欢ка', '📦 Остальное']:
+    elif text in ['🍎 Продукты', 'Аптека', '📦 Остальное']:
         await handle_shopping_category(update, context, text)  # Keep emoji for proper matching
     elif text == '➕ Создать копилку':
         await handle_create_piggy_bank(update, context)
@@ -356,9 +372,9 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif text.startswith('❌ ') and len(text) > 2:
         # Handle item deletion from shopping list
         item_to_delete = text[2:]  # Remove emoji
-        handle_delete_shopping_item(update, context, item_to_delete)
+        await handle_delete_shopping_item(update, context, item_to_delete)
     elif text == '🗑 Очистить':
-        handle_clear_shopping_category(update, context)
+        await handle_clear_shopping_category(update, context)
     elif text.startswith('💰 Положить'):
         # Extract piggy bank name from state or message
         await handle_deposit_to_piggy(update, context)
@@ -377,7 +393,7 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     elif text == ' mos Список покупок' or text == '🛒 Список покупок':  # Handle both variations
         await handle_shopping_list_menu(update, context)
     elif text == '⚙️ Настройки':  # Explicitly handle settings button
-        handle_settings_menu(update, context)
+        await handle_settings_menu(update, context)
     elif text == 'ℹ️ Помощь':
         await handle_help_menu(update, context)
     else:
@@ -386,6 +402,10 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 # Handle settings menu
 async def handle_settings_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -430,6 +450,8 @@ async def handle_settings_menu_callback(query, context: ContextTypes.DEFAULT_TYP
 
 # Handle help menu
 async def handle_help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     keyboard = [
         [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
     ]
@@ -471,6 +493,106 @@ async def handle_help_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -
         help_text,
         reply_markup=reply_markup
     )
+    
+    await query.edit_message_text(
+        help_text,
+        reply_markup=reply_markup
+    )
+
+# Handle crypto menu
+async def handle_crypto_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
+    if update.effective_user is None:
+        return
+    user_id = str(update.effective_user.id)
+    user_data = load_user_data()
+    
+    # Check if API keys are set
+    api_key = user_data.get(user_id, {}).get('bybit_api_key')
+    api_secret = user_data.get(user_id, {}).get('bybit_api_secret')
+    
+    # Check for decryption errors
+    if api_key == "__DECRYPTION_FAILED__" or api_secret == "__DECRYPTION_FAILED__":
+        # Reset the keys and prompt user to re-enter them
+        reset_user_api_keys(user_id)
+        keyboard = [
+            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            '❌ Ошибка расшифровки API ключей. Пожалуйста, введите ваши API ключи заново:',
+            reply_markup=reply_markup
+        )
+        return
+    
+    if not api_key or not api_secret:
+        keyboard = [
+            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, введите ваши API ключи:',
+            reply_markup=reply_markup
+        )
+        return
+    
+    # If API keys are set, show crypto menu
+    keyboard = [
+        [InlineKeyboardButton('📊 Статистика', callback_data='crypto_stats'), InlineKeyboardButton('💰 Баланс', callback_data='crypto_balance')],
+        [InlineKeyboardButton('⚙️ Настройки', callback_data='crypto_settings'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    # Fetch data from Bybit API
+    try:
+        # Get positions
+        positions_data = get_bybit_positions(api_key, api_secret)
+        
+        if positions_data and positions_data.get('retCode') == 0:
+            positions = positions_data.get('result', {}).get('list', [])
+            
+            # Format positions for display
+            positions_text = ''
+            total_pnl = 0
+            
+            for position in positions:
+                if float(position.get('size', 0)) > 0:  # Only show open positions
+                    symbol = position.get('symbol', 'Unknown')
+                    pnl = float(position.get('unrealisedPnl', 0))
+                    roe = float(position.get('roe', 0)) * 100
+                    total_pnl += pnl
+                    
+                    positions_text += f'{symbol}: {roe:+.1f}% ({pnl:+.0f}$)\n'
+            
+            if not positions_text:
+                positions_text = 'Нет открытых позиций\n'
+                
+            await update.message.reply_text(
+                f'📈 Активные сделки:\n\n'
+                f'{positions_text}\n'
+                f'Общий PnL: {total_pnl:+.0f}$\n\n'
+                f'Выберите действие:',
+                reply_markup=reply_markup
+            )
+        else:
+            await update.message.reply_text(
+                '📈 Активные сделки:\n\n'
+                'Ошибка получения данных\n\n'
+                'Выберите действие:',
+                reply_markup=reply_markup
+            )
+    except Exception as e:
+        logger.error(f"Error fetching Bybit data: {e}")
+        await update.message.reply_text(
+            '❌ Ошибка при получении данных с Bybit. Пожалуйста, проверьте ваши API ключи.\n\n'
+            'Выберите действие:',
+            reply_markup=reply_markup
+        )
 
 # Handle crypto menu callback
 async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -528,7 +650,6 @@ async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE)
             # Format positions for display
             positions_text = ''
             total_pnl = 0
-            
             for position in positions:
                 if float(position.get('size', 0)) > 0:  # Only show open positions
                     symbol = position.get('symbol', 'Unknown')
@@ -623,49 +744,73 @@ async def handle_crypto_balance_callback(query, context: ContextTypes.DEFAULT_TY
         # Get wallet balance
         balance_data = get_bybit_wallet_balance(api_key, api_secret)
         
+        # Log the raw response for debugging
+        logger.info(f"Bybit balance response for user {user_id}: {balance_data}")
+        
         if balance_data and balance_data.get('retCode') == 0:
-            balances = balance_data.get('result', {}).get('list', [{}])[0].get('coin', [])
+            # Check if result and list exist
+            result = balance_data.get('result', {})
+            balance_list = result.get('list', [])
             
-            # Format balances for display
-            balance_text = ''
-            total_balance = 0
+            logger.info(f"Balance list: {balance_list}")
             
-            for coin in balances:
-                coin_name = coin.get('coin', 'Unknown')
-                coin_balance = float(coin.get('walletBalance', 0))
-                coin_usd_value = float(coin.get('usdValue', 0))
-                total_balance += coin_usd_value
+            if balance_list and len(balance_list) > 0:
+                balances = balance_list[0].get('coin', [])
                 
-                if coin_balance > 0:
-                    balance_text += f'{coin_name}: {coin_balance:.4f}'
-                    if coin_usd_value > 0:
-                        balance_text += f' (≈ ${coin_usd_value:.0f})\n'
-                    else:
-                        balance_text += '\n'
-            
-            if not balance_text:
-                balance_text = 'Кошелек пуст\n'
+                # Format balances for display
+                balance_text = ''
+                total_balance = 0
                 
-            keyboard = [
-                [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-            ]
-            reply_markup = InlineKeyboardMarkup(keyboard)
+                for coin in balances:
+                    coin_name = coin.get('coin', 'Unknown')
+                    coin_balance = float(coin.get('walletBalance', 0))
+                    coin_usd_value = float(coin.get('usdValue', 0))
+                    total_balance += coin_usd_value
+                    
+                    if coin_balance > 0:
+                        balance_text += f'{coin_name}: {coin_balance:.4f}'
+                        if coin_usd_value > 0:
+                            balance_text += f' (≈ ${coin_usd_value:.2f})\n'
+                        else:
+                            balance_text += '\n'
                 
-            await query.edit_message_text(
-                f'💰 Баланс кошелька:\n\n'
-                f'{balance_text}\n'
-                f'Общий баланс: ≈ ${total_balance:.0f}',
-                reply_markup=reply_markup
-            )
+                if not balance_text:
+                    balance_text = 'Кошелек пуст\n'
+                    
+                keyboard = [
+                    [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                await query.edit_message_text(
+                    f'💰 Баланс кошелька:\n\n'
+                    f'{balance_text}\n'
+                    f'Общий баланс: ≈ ${total_balance:.2f}',
+                    reply_markup=reply_markup
+                )
+            else:
+                keyboard = [
+                    [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                await query.edit_message_text(
+                    '💰 Баланс кошелька:\n\n'
+                    'Ошибка получения данных: пустой список балансов\n\n'
+                    'Общий баланс: ≈ $0.00',
+                    reply_markup=reply_markup
+                )
         else:
+            error_message = "Неизвестная ошибка"
+            if balance_data:
+                error_message = balance_data.get('retMsg', 'Неизвестная ошибка API')
             keyboard = [
                 [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await query.edit_message_text(
                 '💰 Баланс кошелька:\n\n'
-                'Ошибка получения данных\n\n'
-                'Общий баланс: ≈ $0',
+                f'Ошибка получения данных: {error_message}\n\n'
+                'Общий баланс: ≈ $0.00',
                 reply_markup=reply_markup
             )
     except Exception as e:
@@ -677,7 +822,7 @@ async def handle_crypto_balance_callback(query, context: ContextTypes.DEFAULT_TY
         await query.edit_message_text(
             '💰 Баланс кошелька:\n\n'
             '❌ Ошибка при получении данных с Bybit\n\n'
-            'Общий баланс: ≈ $0',
+            'Общий баланс: ≈ $0.00',
             reply_markup=reply_markup
         )
 
@@ -704,82 +849,12 @@ async def handle_crypto_settings_callback(query, context: ContextTypes.DEFAULT_T
     )
 
 # Handle crypto menu callback
-async def handle_crypto_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(query.from_user.id)
-    user_data = load_user_data()
-    
-    # Check if API keys are set
-    if not user_data.get(user_id, {}).get('bybit_api_key') or not user_data.get(user_id, {}).get('bybit_api_secret'):
-        keyboard = [
-            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
-            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(
-            'Для работы с криптой необходимо настроить API ключи Bybit.\nПожалуйста, введите ваши API ключи:',
-            reply_markup=reply_markup
-        )
-        return
-    
-    # If API keys are set, show crypto menu
-    keyboard = [
-        [InlineKeyboardButton('📊 Статистика', callback_data='crypto_stats'), InlineKeyboardButton('💰 Баланс', callback_data='crypto_balance')],
-        [InlineKeyboardButton('⚙️ Настройки', callback_data='crypto_settings'), InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    # Fetch data from Bybit API
-    try:
-        api_key = user_data[user_id]['bybit_api_key']
-        api_secret = user_data[user_id]['bybit_api_secret']
-        
-        # Get positions
-        positions_data = get_bybit_positions(api_key, api_secret)
-        
-        if positions_data and positions_data.get('retCode') == 0:
-            positions = positions_data.get('result', {}).get('list', [])
-            
-            # Format positions for display
-            positions_text = ''
-            total_pnl = 0
-            
-            for position in positions:
-                if float(position.get('size', 0)) > 0:  # Only show open positions
-                    symbol = position.get('symbol', 'Unknown')
-                    pnl = float(position.get('unrealisedPnl', 0))
-                    roe = float(position.get('roe', 0)) * 100
-                    total_pnl += pnl
-                    
-                    positions_text += f'{symbol}: {roe:+.1f}% ({pnl:+.0f}$)\n'
-            
-            if not positions_text:
-                positions_text = 'Нет открытых позиций\n'
-                
-            await query.edit_message_text(
-                f'📈 Активные сделки:\n\n'
-                f'{positions_text}\n'
-                f'Общий PnL: {total_pnl:+.0f}$\n\n'
-                f'Выберите действие:',
-                reply_markup=reply_markup
-            )
-        else:
-            await query.edit_message_text(
-                '📈 Активные сделки:\n\n'
-                'Ошибка получения данных\n\n'
-                'Выберите действие:',
-                reply_markup=reply_markup
-            )
-    except Exception as e:
-        logger.error(f"Error fetching Bybit data: {e}")
-        await query.edit_message_text(
-            '❌ Ошибка при получении данных с Bybit. Пожалуйста, проверьте ваши API ключи.\n\n'
-            'Выберите действие:',
-            reply_markup=reply_markup
-        )
+
 
 # Handle crypto submenu
 async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TYPE, selection: str) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -805,11 +880,11 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
     if selection == '📊 Статистика':
         # Statistics submenu
         keyboard = [
-            [{'text': '📅 День'}, {'text': '📆 Неделя'}],
-            [{'text': '🗓 Месяц'}, {'text': 'FullYear'}],
-            [{'text': '🏠 Главная'}]
+            [InlineKeyboardButton('📅 День', callback_data='stats_day'), InlineKeyboardButton('📆 Неделя', callback_data='stats_week')],
+            [InlineKeyboardButton('🗓 Месяц', callback_data='stats_month'), InlineKeyboardButton('FullYear', callback_data='stats_year')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
         ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text('Выберите период статистики:', reply_markup=reply_markup)
         
     elif selection == '💰 Баланс':
@@ -819,9 +894,9 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
                 await update.message.reply_text(
                     'Для работы с криптой необходимо настроить API ключи Bybit.\n'
                     'Пожалуйста, введите ваши API ключи в настройках.',
-                    reply_markup=ReplyKeyboardMarkup([
-                        [{'text': '🏠 Главная'}]
-                    ], resize_keyboard=True)
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                    ])
                 )
                 return
             
@@ -829,44 +904,61 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
             balance_data = get_bybit_wallet_balance(api_key, api_secret)
             
             if balance_data and balance_data.get('retCode') == 0:
-                balances = balance_data.get('result', {}).get('list', [{}])[0].get('coin', [])
+                # Check if result and list exist
+                result = balance_data.get('result', {})
+                balance_list = result.get('list', [])
                 
-                # Format balances for display
-                balance_text = ''
-                total_balance = 0
-                
-                for coin in balances:
-                    coin_name = coin.get('coin', 'Unknown')
-                    coin_balance = float(coin.get('walletBalance', 0))
-                    coin_usd_value = float(coin.get('usdValue', 0))
-                    total_balance += coin_usd_value
+                if balance_list and len(balance_list) > 0:
+                    balances = balance_list[0].get('coin', [])
                     
-                    if coin_balance > 0:
-                        balance_text += f'{coin_name}: {coin_balance:.4f}'
-                        if coin_usd_value > 0:
-                            balance_text += f' (≈ ${coin_usd_value:.0f})\n'
-                        else:
-                            balance_text += '\n'
-                
-                if not balance_text:
-                    balance_text = 'Кошелек пуст\n'
+                    # Format balances for display
+                    balance_text = ''
+                    total_balance = 0
                     
-                await update.message.reply_text(
-                    f'💰 Баланс кошелька:\n\n'
-                    f'{balance_text}\n'
-                    f'Общий баланс: ≈ ${total_balance:.0f}',
-                    reply_markup=ReplyKeyboardMarkup([
-                        [{'text': '🏠 Главная'}]
-                    ], resize_keyboard=True)
-                )
+                    for coin in balances:
+                        coin_name = coin.get('coin', 'Unknown')
+                        coin_balance = float(coin.get('walletBalance', 0))
+                        coin_usd_value = float(coin.get('usdValue', 0))
+                        total_balance += coin_usd_value
+                        
+                        if coin_balance > 0:
+                            balance_text += f'{coin_name}: {coin_balance:.4f}'
+                            if coin_usd_value > 0:
+                                balance_text += f' (≈ ${coin_usd_value:.0f})\n'
+                            else:
+                                balance_text += '\n'
+                    
+                    if not balance_text:
+                        balance_text = 'Кошелек пуст\n'
+                        
+                    await update.message.reply_text(
+                        f'💰 Баланс кошелька:\n\n'
+                        f'{balance_text}\n'
+                        f'Общий баланс: ≈ ${total_balance:.0f}',
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                        ])
+                    )
+                else:
+                    await update.message.reply_text(
+                        '💰 Баланс кошелька:\n\n'
+                        'Ошибка получения данных: пустой список балансов\n\n'
+                        'Общий баланс: ≈ $0',
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                        ])
+                    )
             else:
+                error_message = "Неизвестная ошибка"
+                if balance_data:
+                    error_message = balance_data.get('retMsg', 'Неизвестная ошибка API')
                 await update.message.reply_text(
                     '💰 Баланс кошелька:\n\n'
-                    'Ошибка получения данных\n\n'
+                    f'Ошибка получения данных: {error_message}\n\n'
                     'Общий баланс: ≈ $0',
-                    reply_markup=ReplyKeyboardMarkup([
-                        [{'text': '🏠 Главная'}]
-                    ], resize_keyboard=True)
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                    ])
                 )
         except Exception as e:
             logger.error(f"Error fetching Bybit balance: {e}")
@@ -874,61 +966,18 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
                 '💰 Баланс кошелька:\n\n'
                 '❌ Ошибка при получении данных с Bybit\n\n'
                 'Общий баланс: ≈ $0',
-                reply_markup=ReplyKeyboardMarkup([
-                    [{'text': '🏠 Главная'}]
-                ], resize_keyboard=True)
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
+                ])
             )
         
     elif selection == '⚙️ Настройки':
         # Settings menu
         keyboard = [
-            [{'text': '🔑 Ввести API ключи'}],
-            [{'text': '🏠 Главная'}]
+            [InlineKeyboardButton('🔑 Ввести API ключи', callback_data='enter_api_keys')],
+            [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
         ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-        
-        api_info = ""
-        if user_data.get(user_id, {}).get('bybit_api_key'):
-            api_info = f"\nAPI Key: {user_data[user_id]['bybit_api_key'][:5]}...{user_data[user_id]['bybit_api_key'][-5:]}"
-        
-        await update.message.reply_text(
-            f'⚙️ Настройки Bybit:{api_info}\n\nВыберите действие:',
-            reply_markup=reply_markup
-        )
-
-                    f'{balance_text}\n'
-                    f'Общий баланс: ≈ ${total_balance:.0f}',
-                    reply_markup=ReplyKeyboardMarkup([
-                        [{'text': '🏠 Главная'}]
-                    ], resize_keyboard=True)
-                )
-            else:
-                await update.message.reply_text(
-                    '💰 Баланс кошелька:\n\n'
-                    'Ошибка получения данных\n\n'
-                    'Общий баланс: ≈ $0',
-                    reply_markup=ReplyKeyboardMarkup([
-                        [{'text': '🏠 Главная'}]
-                    ], resize_keyboard=True)
-                )
-        except Exception as e:
-            logger.error(f"Error fetching Bybit balance: {e}")
-            await update.message.reply_text(
-                '💰 Баланс кошелька:\n\n'
-                '❌ Ошибка при получении данных с Bybit\n\n'
-                'Общий баланс: ≈ $0',
-                reply_markup=ReplyKeyboardMarkup([
-                    [{'text': '🏠 Главная'}]
-                ], resize_keyboard=True)
-            )
-        
-    elif selection == '⚙️ Настройки':
-        # Settings menu
-        keyboard = [
-            [{'text': '🔑 Ввести API ключи'}],
-            [{'text': '🏠 Главная'}]
-        ]
-        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+        reply_markup = InlineKeyboardMarkup(keyboard)
         
         api_info = ""
         if user_data.get(user_id, {}).get('bybit_api_key'):
@@ -941,6 +990,8 @@ async def handle_crypto_submenu(update: Update, context: ContextTypes.DEFAULT_TY
 
 # Handle enter API keys
 async def handle_enter_api_keys(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
@@ -977,6 +1028,8 @@ async def handle_enter_api_keys_callback(query, context: ContextTypes.DEFAULT_TY
 
 # Handle API key input
 async def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1013,6 +1066,8 @@ async def handle_api_key_input(update: Update, context: ContextTypes.DEFAULT_TYP
 
 # Handle API secret input
 async def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1028,15 +1083,7 @@ async def handle_api_secret_input(update: Update, context: ContextTypes.DEFAULT_
         
     user_data[user_id]['bybit_api_secret'] = update.message.text
     save_user_data(user_data)
-
-# Function to reset user API keys
-def reset_user_api_keys(user_id):
-    user_data = load_user_data()
-    if user_id in user_data:
-        user_data[user_id]['bybit_api_key'] = ''
-        user_data[user_id]['bybit_api_secret'] = ''
-        save_user_data(user_data)
-
+    
     del user_states[user_id]
     save_user_states(user_states)
     
@@ -1052,8 +1099,18 @@ def reset_user_api_keys(user_id):
         reply_markup=reply_markup
     )
 
+# Function to reset user API keys
+def reset_user_api_keys(user_id):
+    user_data = load_user_data()
+    if user_id in user_data:
+        user_data[user_id]['bybit_api_key'] = ''
+        user_data[user_id]['bybit_api_secret'] = ''
+        save_user_data(user_data)
+
 # Piggy bank section
 async def handle_piggy_bank_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -1098,6 +1155,8 @@ async def handle_piggy_bank_menu_callback(query, context: ContextTypes.DEFAULT_T
 
 # Handle piggy bank actions
 async def handle_piggy_bank_actions(update: Update, context: ContextTypes.DEFAULT_TYPE, piggy_name: str) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -1166,6 +1225,8 @@ async def handle_piggy_bank_actions_callback(query, context: ContextTypes.DEFAUL
 
 # Handle create piggy bank
 async def handle_create_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     
@@ -1196,6 +1257,8 @@ async def handle_create_piggy_bank_callback(query, context: ContextTypes.DEFAULT
 
 # Handle piggy bank name input
 async def handle_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1213,6 +1276,8 @@ async def handle_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_
 
 # Handle piggy bank target input
 async def handle_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1249,42 +1314,14 @@ async def handle_piggy_target_input(update: Update, context: ContextTypes.DEFAUL
             reply_markup=reply_markup
         )
     except ValueError:
-        update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
+        await update.message.reply_text('⚠️ Пожалуйста, введите корректную сумму (число):')
 
-# Handle deposit to piggy bank
-def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = str(update.effective_user.id)
-    user_states = load_user_states()
-    user_data = load_user_data()
-    
-    # Get current piggy bank from state
-    if user_id not in user_states or not user_states[user_id].startswith('CURRENT_PIGGY_'):
-        update.message.reply_text('❌ Ошибка: не выбрана копилка')
-        return
-    
-    piggy_name = user_states[user_id].replace('CURRENT_PIGGY_', '')
-    
-    if piggy_name not in user_data.get(user_id, {}).get('piggy_banks', {}):
-        update.message.reply_text('❌ Ошибка: копилка не найдена')
-        return
-    
-    user_states[user_id] = f'DEPOSITING_{piggy_name}'
-    save_user_states(user_states)
-    
-    keyboard = [
-        [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    update.message.reply_text(
-        f'💰 Введите сумму для пополнения копилки "{piggy_name}":',
-        reply_markup=reply_markup
-    )
+
 
 # Handle shopping list menu
 async def handle_shopping_list_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
-        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('杨欢ка', callback_data='category_Аптека'), InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное')],
+        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('Аптека', callback_data='category_Аптека'), InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное')],
         [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1294,7 +1331,7 @@ async def handle_shopping_list_menu(update: Update, context: ContextTypes.DEFAUL
 # Handle shopping list menu callback
 async def handle_shopping_list_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
-        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('杨欢ка', callback_data='category_Аптека'), InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное')],
+        [InlineKeyboardButton('🍎 Продукты', callback_data='category_Продукты'), InlineKeyboardButton('Аптека', callback_data='category_Аптека'), InlineKeyboardButton('📦 Остальное', callback_data='category_Остальное')],
         [InlineKeyboardButton('🏠 Главная', callback_data='main_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -1303,11 +1340,13 @@ async def handle_shopping_list_menu_callback(query, context: ContextTypes.DEFAUL
 
 # Handle shopping category
 async def handle_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE, category: str) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
     # Get items for this category (remove emoji if present)
-    clean_category = category[2:] if category.startswith(('🍎', '杨欢ка', '📦')) else category
+    clean_category = category[2:] if category.startswith(('🍎', 'Аптека', '📦')) else category
     items = user_data.get(user_id, {}).get('shopping_list', {}).get(clean_category, [])
     
     # Create keyboard with items and action buttons
@@ -1345,7 +1384,7 @@ async def handle_shopping_category_callback(query, context: ContextTypes.DEFAULT
     user_data = load_user_data()
     
     # Get items for this category (remove emoji if present)
-    clean_category = category[2:] if category.startswith(('🍎', '杨欢ка', '📦')) else category
+    clean_category = category[2:] if category.startswith(('🍎', 'Аптека', '📦')) else category
     items = user_data.get(user_id, {}).get('shopping_list', {}).get(clean_category, [])
     
     # Create keyboard with items and action buttons
@@ -1379,6 +1418,8 @@ async def handle_shopping_category_callback(query, context: ContextTypes.DEFAULT
 
 # Handle adding item to shopping list
 async def handle_add_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1415,7 +1456,9 @@ async def handle_add_shopping_item(update: Update, context: ContextTypes.DEFAULT
     )
 
 # Handle delete shopping item
-def handle_delete_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_to_delete: str) -> None:
+async def handle_delete_shopping_item(update: Update, context: ContextTypes.DEFAULT_TYPE, item_to_delete: str) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -1430,17 +1473,19 @@ def handle_delete_shopping_item(update: Update, context: ContextTypes.DEFAULT_TY
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
-            update.message.reply_text(
+            await update.message.reply_text(
                 f'✅ Товар "{item_to_delete}" удален из категории "{category}"!\n\n'
                 f'Вы можете продолжить работу со списком покупок.',
                 reply_markup=reply_markup
             )
             return
     
-    update.message.reply_text('❌ Предмет не найден', reply_markup=main_menu())
+    await update.message.reply_text('❌ Предмет не найден', reply_markup=main_menu())
 
 # Handle clear shopping category
-def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+async def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1461,7 +1506,7 @@ def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     
-    update.message.reply_text(
+    await update.message.reply_text(
         f'✅ Категория "{clean_category}" очищена!\n\n'
         f'Вы можете добавить новые товары или перейти к другим категориям.',
         reply_markup=reply_markup
@@ -1469,6 +1514,8 @@ def handle_clear_shopping_category(update: Update, context: ContextTypes.DEFAULT
 
 # Handle deposit to piggy bank
 async def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -1499,6 +1546,8 @@ async def handle_deposit_to_piggy(update: Update, context: ContextTypes.DEFAULT_
 
 # Handle withdraw from piggy bank
 async def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -1529,6 +1578,8 @@ async def handle_withdraw_from_piggy(update: Update, context: ContextTypes.DEFAU
 
 # Handle amount input
 async def handle_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1555,6 +1606,8 @@ async def handle_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 # Handle edit piggy bank
 async def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -1582,6 +1635,8 @@ async def handle_edit_piggy_bank(update: Update, context: ContextTypes.DEFAULT_T
 
 # Handle edit piggy bank name
 async def handle_edit_piggy_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -1608,6 +1663,8 @@ async def handle_edit_piggy_name(update: Update, context: ContextTypes.DEFAULT_T
 
 # Handle edit piggy bank name input
 async def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1632,6 +1689,8 @@ async def handle_edit_piggy_name_input(update: Update, context: ContextTypes.DEF
 
 # Handle edit piggy bank target
 async def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_states = load_user_states()
     user_data = load_user_data()
@@ -1658,6 +1717,8 @@ async def handle_edit_piggy_target(update: Update, context: ContextTypes.DEFAULT
 
 # Handle edit piggy bank target input
 async def handle_edit_piggy_target_input(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     user_states = load_user_states()
@@ -1685,6 +1746,8 @@ async def handle_edit_piggy_target_input(update: Update, context: ContextTypes.D
 
 # Handle delete piggy bank
 async def handle_delete_piggy_bank(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if update.effective_user is None:
+        return
     user_id = str(update.effective_user.id)
     user_data = load_user_data()
     
@@ -1710,6 +1773,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer()
         
         data = query.data
+        if update.effective_user is None:
+            return
         user_id = str(update.effective_user.id)
         
         logger.info(f"User {user_id} clicked button with callback_data: {data}")
