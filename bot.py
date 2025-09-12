@@ -127,7 +127,6 @@ def get_bybit_signature_v3(api_key, api_secret, method, url, params=None, data=N
     
     return signature, timestamp
 
-# Bybit API functions for wallet balance and positions
 def get_bybit_wallet_balance(api_key, api_secret):
     """Get wallet balance from Bybit API"""
     params = {'accountType': 'UNIFIED'}
@@ -143,11 +142,8 @@ def make_bybit_request(api_key, api_secret, method, endpoint, params=None, data=
     try:
         url = f"{BYBIT_API_URL}{endpoint}"
         
-        # Generate timestamp
-        timestamp = str(int(time.time() * 1000))
-        
         # Generate signature
-        signature, _ = get_bybit_signature_v3(api_key, api_secret, method, url, params, data)
+        signature, timestamp = get_bybit_signature_v3(api_key, api_secret, method, url, params, data)
         
         # Prepare headers
         headers = {
