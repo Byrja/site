@@ -25,12 +25,20 @@ def load_user_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, 'r') as f:
             data = json.load(f)
+            # Ensure notes structure exists for existing users
+            for user_id in data:
+                if 'notes' not in data[user_id]:
+                    data[user_id]['notes'] = {}
             return data
     else:
         return {}
 
 # Save user data
 def save_user_data(data):
+    # Ensure notes structure exists before saving
+    for user_id in data:
+        if 'notes' not in data[user_id]:
+            data[user_id]['notes'] = {}
     with open(DATA_FILE, 'w') as f:
         json.dump(data, f, indent=2)
 
@@ -51,7 +59,8 @@ def save_user_states(states):
 def main_menu():
     keyboard = [
         [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu')],
-        [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')]
+        [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
+        [InlineKeyboardButton('📝 Заметки', callback_data='notes_menu')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -83,7 +92,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 'Продукты': [],
                 'Аптека': [],
                 'Остальное': []
-            }
+            },
+            'notes': {}
         }
         save_user_data(user_data)
     else:
@@ -100,6 +110,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             for category in categories:
                 if category not in user_data[user_id]['shopping_list']:
                     user_data[user_id]['shopping_list'][category] = []
+        
+        # Ensure notes structure exists
+        if 'notes' not in user_data[user_id]:
+            user_data[user_id]['notes'] = {}
+            
         save_user_data(user_data)
     
     if user_id in user_states:
@@ -110,6 +125,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     keyboard = [
         [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu')],
         [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
+        [InlineKeyboardButton('📝 Заметки', callback_data='notes_menu')],
         [InlineKeyboardButton('⚙️ Настройки', callback_data='settings_menu'), InlineKeyboardButton('ℹ️ Помощь', callback_data='help_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -117,7 +133,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     welcome_message = (
         'Добро пожаловать в финансовый бот! 🤖\n\n'
         'Здесь вы можете управлять своими финансами, '
-        'копилками и списками покупок.\n\n'
+        'копилками, списками покупок и заметками.\n\n'
         'Выберите нужный раздел:'
     )
     
@@ -133,6 +149,7 @@ async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     keyboard = [
         [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu')],
         [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
+        [InlineKeyboardButton('📝 Заметки', callback_data='notes_menu')],
         [InlineKeyboardButton('⚙️ Настройки', callback_data='settings_menu'), InlineKeyboardButton('ℹ️ Помощь', callback_data='help_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -148,6 +165,7 @@ async def show_main_menu_callback(query, context: ContextTypes.DEFAULT_TYPE) -> 
     keyboard = [
         [InlineKeyboardButton(' Мос Копилка', callback_data='piggy_bank_menu')],
         [InlineKeyboardButton('🛒 Список покупок', callback_data='shopping_list_menu')],
+        [InlineKeyboardButton('📝 Заметки', callback_data='notes_menu')],
         [InlineKeyboardButton('⚙️ Настройки', callback_data='settings_menu'), InlineKeyboardButton('ℹ️ Помощь', callback_data='help_menu')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -198,12 +216,23 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif state.startswith('EDITING_PIGGY_TARGET_'):
             await handle_edit_piggy_target_input(update, context)
             return
+        # Handle note creation
+        elif state == 'CREATING_NOTE_TITLE':
+            await handle_note_title_input(update, context)
+            return
+        elif state.startswith('CREATING_NOTE_CONTENT_'):
+            await handle_note_content_input(update, context)
+            return
+        # Handle note editing
+        elif state.startswith('EDITING_NOTE_'):
+            await handle_note_edit_input(update, context)
+            return
     
     # Clear user state if not in a specific flow
     if user_id in user_states:
         should_clear_state = True
         # Don't clear state for specific flows
-        if not text.startswith(('➕ Создать копилку', '✏️ Редактировать', '💰 Положить', '💸 Снять')):
+        if not text.startswith(('➕ Создать копилку', '✏️ Редактировать', '💰 Положить', '💸 Снять', '➕ Создать заметку', '✏️ Редактировать')):
             if text not in ['➕ Добавить']:
                 del user_states[user_id]
                 save_user_states(user_states)
@@ -213,6 +242,8 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await handle_piggy_bank_menu(update, context)
     elif text == '🛒 Список покупок':
         await handle_shopping_list_menu(update, context)
+    elif text == '📝 Заметки':
+        await handle_notes_menu(update, context)
     elif text == '🏠 Главная':
         await start(update, context)  # Make this async call
     elif text.startswith(' Мос '):
@@ -1010,6 +1041,8 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             await handle_piggy_bank_menu_callback(query, context)
         elif data == 'shopping_list_menu':
             await handle_shopping_list_menu_callback(query, context)
+        elif data == 'notes_menu':
+            await handle_notes_menu_callback(query, context)
         elif data == 'settings_menu':
             await handle_settings_menu_callback(query, context)
         elif data == 'help_menu':
@@ -1169,6 +1202,20 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
                     await query.edit_message_text('❌ Ошибка: категория не найдена')
             else:
                 await query.edit_message_text('❌ Ошибка: некорректные данные')
+        elif data.startswith('note_'):
+            note_id = data.replace('note_', '')
+            await handle_note_actions_callback(query, context, note_id)
+        elif data == 'create_note':
+            await handle_create_note_callback(query, context)
+        elif data.startswith('edit_note_'):
+            note_id = data.replace('edit_note_', '')
+            await handle_edit_note_callback(query, context, note_id)
+        elif data.startswith('delete_note_'):
+            note_id = data.replace('delete_note_', '')
+            await handle_delete_note_callback(query, context, note_id)
+        elif data.startswith('save_note_'):
+            note_id = data.replace('save_note_', '')
+            await handle_save_note_callback(query, context, note_id)
         else:
             logger.warning(f"Unknown callback_data: {data}")
             await query.edit_message_text("Неизвестная команда. Пожалуйста, попробуйте еще раз.")
