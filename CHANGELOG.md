@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2025-09-18
+
+### Added
+- Automatic dependency installation in launcher script
+- Configuration validation before bot startup
+- Enhanced process management with multiple termination methods
+- Test script for verifying bot startup and configuration
+- Improved error handling and logging
+
+### Changed
+- Launcher script now uses system Python instead of hardcoded path
+- Updated README with more detailed installation instructions
+- Improved launcher menu with better version tracking
+- Enhanced conflict prevention with multiple process termination methods
+
+### Fixed
+- Issue with bot crashing on /start command due to missing .env file
+- Multiple bot instances running simultaneously causing conflicts
+- Hardcoded Python path in launcher script
+- Missing token validation before bot startup
+
 ## [1.1.0] - 2025-09-18
 
 ### Added

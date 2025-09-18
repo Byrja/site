@@ -60,6 +60,10 @@ The new reminders feature allows users to:
    python bot.py
    ```
 
+## Setup Instructions
+
+For detailed setup instructions, please see [SETUP_INSTRUCTIONS.md](SETUP_INSTRUCTIONS.md).
+
 ## Usage
 
 Start the bot by sending `/start` to your bot in Telegram.
@@ -83,3 +87,17 @@ In the reminders section, you can:
 - Delete reminders you no longer need
 
 When a reminder's date and time match the current time, the bot will send a notification message to the user with options to reschedule or delete the reminder.
+
+## Launcher Script
+
+For Windows users, a launcher script [launcher.bat](launcher.bat) is provided with the following features:
+- Start/Stop/Restart the bot
+- Update from GitHub
+- Check logs
+- Install/Update dependencies
+- Configuration checking
+- Troubleshooting assistance
+
+## Testing
+
+A test script [test_bot_startup.py](test_bot_startup.py) is available to verify bot configuration and dependencies.

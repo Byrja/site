@@ -8,7 +8,7 @@ title Финансовый Telegram Бот - Лаунчер
 cls
 echo ================================
 echo    Финансовый Telegram Бот
-echo         Лаунчер v1.0
+echo         Лаунчер v1.1
 echo ================================
 echo.
 echo 1. Запустить бота
@@ -41,8 +41,28 @@ goto menu
 cls
 echo Запуск бота...
 echo.
+
+REM Проверка наличия .env файла и токена
+if not exist ".env" (
+    echo ОШИБКА: Файл .env не найден!
+    echo Создайте файл .env на основе .env.example и укажите токен бота
+    echo.
+    pause
+    goto menu
+)
+
+REM Проверка наличия токена в .env файле
+findstr /C:"TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here" .env >nul
+if %errorlevel% equ 0 (
+    echo ОШИБКА: Токен бота не установлен в файле .env!
+    echo Откройте файл .env и укажите правильный токен бота
+    echo.
+    pause
+    goto menu
+)
+
 echo Проверка зависимостей...
-"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt >nul 2>&1
+python -m pip install -r requirements.txt >nul 2>&1
 if %errorlevel% neq 0 (
     echo ОШИБКА: Не удалось установить зависимости!
     echo Попробуйте выбрать пункт 6 для ручной установки.
@@ -54,7 +74,7 @@ taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unk
 wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete >nul 2>&1
 powershell "Get-Process python | Where-Object {$_.MainWindowTitle -like '*Финансовый Telegram Бот*'} | Stop-Process -Force" >nul 2>&1
 timeout /t 2 /nobreak >nul
-start "Финансовый Telegram Бот" /min "C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" bot.py
+start "Финансовый Telegram Бот" /min python bot.py
 echo Бот запущен в фоновом режиме.
 timeout /t 2 /nobreak >nul
 goto menu
@@ -76,6 +96,26 @@ goto menu
 cls
 echo Перезапуск бота...
 echo.
+
+REM Проверка наличия .env файла и токена
+if not exist ".env" (
+    echo ОШИБКА: Файл .env не найден!
+    echo Создайте файл .env на основе .env.example и укажите токен бота
+    echo.
+    pause
+    goto menu
+)
+
+REM Проверка наличия токена в .env файле
+findstr /C:"TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here" .env >nul
+if %errorlevel% equ 0 (
+    echo ОШИБКА: Токен бота не установлен в файле .env!
+    echo Откройте файл .env и укажите правильный токен бота
+    echo.
+    pause
+    goto menu
+)
+
 echo Остановка предыдущих экземпляров бота...
 taskkill /f /im python.exe /fi "WINDOWTITLE eq Финансовый Telegram Бот*" >nul 2>&1
 taskkill /f /im python.exe /fi "IMAGENAME eq python.exe" /fi "WINDOWTITLE ne Unknown Python Window" >nul 2>&1
@@ -83,13 +123,13 @@ wmic process where "name='python.exe' and commandline like '%%bot.py%%'" delete 
 powershell "Get-Process python | Where-Object {$_.MainWindowTitle -like '*Финансовый Telegram Бот*'} | Stop-Process -Force" >nul 2>&1
 timeout /t 2 /nobreak >nul
 echo Проверка зависимостей...
-"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt >nul 2>&1
+python -m pip install -r requirements.txt >nul 2>&1
 if %errorlevel% neq 0 (
     echo ОШИБКА: Не удалось установить зависимости!
     echo Попробуйте выбрать пункт 6 для ручной установки.
     echo.
 )
-start "Финансовый Telegram Бот" /min "C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" bot.py
+start "Финансовый Telegram Бот" /min python bot.py
 echo Бот перезапущен.
 timeout /t 2 /nobreak >nul
 goto menu
@@ -109,7 +149,7 @@ if %errorlevel% neq 0 (
     echo.
     echo Бот успешно обновлен!
     echo Установка обновленных зависимостей...
-    "C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
+    python -m pip install -r requirements.txt
     if %errorlevel% neq 0 (
         echo.
         echo ОШИБКА: Не удалось установить зависимости!
@@ -141,7 +181,7 @@ goto menu
 cls
 echo Установка/обновление зависимостей...
 echo.
-"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
     echo ОШИБКА: Не удалось установить зависимости!
@@ -162,7 +202,7 @@ goto menu
 cls
 echo Проверка конфигурации...
 echo.
-"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" check_config.py
+python check_config.py
 echo.
 pause
 goto menu
@@ -171,7 +211,7 @@ goto menu
 cls
 echo Диагностика проблем...
 echo.
-"C:\Users\br\AppData\Local\Programs\Python\Python312\python.exe" check_config.py --diagnose
+python check_config.py --diagnose
 echo.
 pause
 goto menu
