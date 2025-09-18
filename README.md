@@ -1,130 +1,85 @@
-# Финансовый Telegram бот
+# Financial Telegram Bot with Reminders
 
-Финансовый бот для Telegram с функциями управления копилками, списков покупок и заметок.
+A comprehensive Telegram bot for managing finances, cryptocurrency assets, piggy banks, shopping lists, and now reminders.
 
-Теперь бот использует inline-меню вместо reply-клавиатуры для более удобного взаимодействия с пользователем.
+## Features
 
-## Функционал
+- 💰 Cryptocurrency management (Bybit API integration)
+- 🍘 Piggy banks for saving money
+- 🛒 Shopping lists with categories
+- ⏰ Reminders with date/time scheduling and repeat options
+- ⚙️ Settings and help menus
 
-### 🏦 Копилка
-- Создание копилок с названием и целевой суммой
-- Редактирование копилок
-- Добавление и снятие средств
-- Отображение прогресса в процентном соотношении
-- Предложение создания копилки, если их нет
+## Reminders Functionality
 
-### 🛒 Список покупок
-- Разделение на 3 категории: Продукты, Аптека, Остальное
-- Добавление/удаление элементов в каждой категории
-- Очистка категорий
-- Предложение добавления элементов, если список пуст
+The new reminders feature allows users to:
 
-### 📝 Заметки
-- Создание личных заметок с заголовком и содержимым
-- Просмотр списка всех заметок
-- Редактирование существующих заметок
-- Удаление ненужных заметок
+1. Create reminders with custom titles and content
+2. Set dates using quick buttons:
+   - Through an hour
+   - Tomorrow
+   - Saturday (nearest)
+   - 15th of the month (nearest)
+   - 31st of the month (nearest)
+   - Custom date/time
+3. Enter custom dates in natural language format (e.g., "tomorrow at noon", "next Monday")
+4. Set time in HH:MM format
+5. View, edit, reschedule, and delete reminders
+6. Set repeat options:
+   - No repeat
+   - Daily
+   - Weekly
+   - Monthly
+   - Weekdays only
+7. Receive notifications at the specified date and time
+8. Reschedule or delete reminders directly from notification messages
 
-### 🎨 Интерфейс
-- Использование inline-меню для более удобного взаимодействия
-- Кнопки прикреплены к сообщениям для лучшего UX
-- Улучшенная навигация и пользовательский опыт
+## Enhanced Reminders Features
 
-### 🔧 Диагностика
-- Расширенная диагностика проблем через лаунчер
-- Проверка конфигурации и зависимостей
-- Мониторинг состояния бота
+- **Timezone Support**: All reminders are stored with timezone information (Europe/Moscow by default)
+- **Grace Period**: Reminders that were missed within 24 hours will still be sent
+- **Repeat Logic**: Repeating reminders automatically calculate the next occurrence after being sent
+- **Startup Catch-up**: Missed reminders are sent when the bot starts up
+- **Concurrent Access Protection**: File locking prevents data corruption when multiple processes access user data
+- **Backward Compatibility**: Old reminder format is automatically converted to the new format
 
-## Установка
+## Installation
 
-1. Клонируйте репозиторий:
-```bash
-git clone https://github.com/Byrja/site.git
-```
+1. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
-2. Создайте виртуальное окружение (рекомендуется):
-```bash
-python -m venv venv
-source venv/bin/activate  # На Windows: venv\Scripts\activate
-```
+2. Create a `.env` file with your Telegram bot token:
+   ```
+   TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+   ```
 
-3. Установите зависимости:
-```bash
-pip install -r requirements.txt
-```
+3. Run the bot:
+   ```
+   python bot.py
+   ```
 
-4. Создайте файл .env на основе .env.example и заполните его:
-```bash
-cp .env.example .env
-# Отредактируйте .env файл, добавив ваши токены
-```
+## Usage
 
-5. Для повышения безопасности в production среде:
-   - Сгенерируйте безопасный ключ шифрования с помощью `python -c "from security import generate_secure_key; print(generate_secure_key())"`
-   - Добавьте его в .env файл как `ENCRYPTION_KEY=ваш_сгенерированный_ключ`
-   - Измените ключ шифрования в [security.py](file:///d:/Users/br/Documents/GitHub/site/security.py) на случайную 32-байтную строку
+Start the bot by sending `/start` to your bot in Telegram.
 
-6. Запустите бота с помощью лаунчера [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat) (на Windows) или вручную:
-```bash
-python bot.py
-```
+Navigate through the menus to access different features:
+- 💰 Crypto: Manage cryptocurrency assets (requires Bybit API keys)
+- 🍘 Piggy Bank: Create and manage savings goals
+- 🛒 Shopping List: Maintain categorized shopping lists
+- ⏰ Reminders: Create and manage timed notifications
+- ⚙️ Settings: Configure API keys and other settings
+- ℹ️ Help: Get information about bot features
 
-## Совместимость
+## Reminders Menu
 
-Бот протестирован со следующими версиями:
-- Python 3.8 - 3.11
-- python-telegram-bot 20.0
-- Windows 10/11
+In the reminders section, you can:
+- Create new reminders with the "➕ Создать напоминание" button
+- View existing reminders by clicking on them
+- Edit reminder content
+- Reschedule reminders to new dates/times
+- Set repeat options for recurring reminders
+- Delete reminders you no longer need
 
-*Примечание: Бот может не работать с Python 3.12 из-за проблем совместимости с некоторыми зависимостями.*
-
-## Безопасность
-
-- Все чувствительные данные (токены, API ключи) хранятся в файле .env
-- Файл .env добавлен в .gitignore и не попадает в репозиторий
-- Используйте .env.example как шаблон для настройки вашего окружения
-- API ключи Bybit шифруются перед сохранением в файл данных пользователей
-- Сообщения пользователей автоматически удаляются для сохранения конфиденциальности
-- Для production среды рекомендуется изменить ключ шифрования на случайную 32-байтную строку
-- Логи записываются в файлы и содержат только техническую информацию (без чувствительных данных)
-
-## Использование лаунчера (Windows)
-
-Для удобного управления ботом на Windows используйте лаунчер [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat):
-
-1. Дважды щелкните по файлу [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat)
-2. Выберите нужное действие в меню:
-   - Запуск бота (автоматически устанавливает зависимости и останавливает предыдущие экземпляры)
-   - Остановка бота
-   - Перезапуск бота (автоматически устанавливает зависимости)
-   - Обновление из GitHub (автоматически устанавливает зависимости)
-   - Проверка логов
-   - Установка/обновление зависимостей
-   - Проверка конфигурации
-
-**Важно:** Лаунчер автоматически останавливает предыдущие экземпляры бота перед запуском нового, чтобы избежать конфликтов.
-
-## Использование
-
-1. Найдите своего бота в Telegram
-2. Нажмите "Start"
-3. Используйте inline-кнопки для навигации по функциям
-
-Бот теперь использует inline-меню, которые прикрепляются к сообщениям, что делает интерфейс более удобным и современным.
-
-## Решение проблем
-
-Если кнопки не работают:
-1. Убедитесь, что запущен только один экземпляр бота
-2. Проверьте логи с помощью лаунчера
-3. Используйте функцию диагностики в лаунчере
-4. Убедитесь, что токен бота указан правильно в файле .env
-
-## Структура проекта
-
-- [bot.py](file:///d:/Users/br/Documents/GitHub/site/bot.py) - Основной файл бота
-- [config.py](file:///d:/Users/br/Documents/GitHub/site/config.py) - Конфигурация проекта
-- [launcher.bat](file:///d:/Users/br/Documents/GitHub/site/launcher.bat) - Лаунчер для Windows
-- [check_config.py](file:///d:/Users/br/Documents/GitHub/site/check_config.py) - Скрипт проверки конфигурации
-- [requirements.txt](file:///d:/Users/br/Documents/GitHub/site/requirements.txt) - Зависимости проекта
-- [.env.example](file:///d:/Users/br/Documents/GitHub/site/.env.example) - Пример файла конфигурации
+When a reminder's date and time match the current time, the bot will send a notification message to the user with options to reschedule or delete the reminder.

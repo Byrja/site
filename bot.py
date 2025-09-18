@@ -7,7 +7,8 @@ import requests
 import hmac
 import hashlib
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 from urllib.parse import urlencode
 from config import TELEGRAM_BOT_TOKEN, USER_DATA_FILE, USER_STATES_FILE, BYBIT_API_URL
 from security import encrypt_data, decrypt_data
@@ -55,23 +56,55 @@ def load_user_data():
     else:
         return {}
 
-# Save user data
+# Save user data with file locking to prevent concurrent writes
 def save_user_data(data):
-    # Encrypt API keys before saving
-    data_to_save = {}
-    for user_id in data:
-        data_to_save[user_id] = data[user_id].copy()
-        if 'bybit_api_key' in data_to_save[user_id]:
-            # Don't encrypt the error marker
-            if data_to_save[user_id]['bybit_api_key'] != "__DECRYPTION_FAILED__":
-                data_to_save[user_id]['bybit_api_key'] = encrypt_data(data_to_save[user_id]['bybit_api_key'])
-        if 'bybit_api_secret' in data_to_save[user_id]:
-            # Don't encrypt the error marker
-            if data_to_save[user_id]['bybit_api_secret'] != "__DECRYPTION_FAILED__":
-                data_to_save[user_id]['bybit_api_secret'] = encrypt_data(data_to_save[user_id]['bybit_api_secret'])
-    
-    with open(DATA_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data_to_save, f, indent=2, ensure_ascii=False)
+    try:
+        # Import portalocker for file locking
+        import portalocker
+        
+        # Encrypt API keys before saving
+        data_to_save = {}
+        for user_id in data:
+            data_to_save[user_id] = data[user_id].copy()
+            if 'bybit_api_key' in data_to_save[user_id]:
+                # Don't encrypt the error marker
+                if data_to_save[user_id]['bybit_api_key'] != "__DECRYPTION_FAILED__":
+                    data_to_save[user_id]['bybit_api_key'] = encrypt_data(data_to_save[user_id]['bybit_api_key'])
+            if 'bybit_api_secret' in data_to_save[user_id]:
+                # Don't encrypt the error marker
+                if data_to_save[user_id]['bybit_api_secret'] != "__DECRYPTION_FAILED__":
+                    data_to_save[user_id]['bybit_api_secret'] = encrypt_data(data_to_save[user_id]['bybit_api_secret'])
+        
+        # Write to temporary file first
+        temp_file = DATA_FILE + ".tmp"
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            # Lock the file
+            portalocker.lock(f, portalocker.LOCK_EX)
+            json.dump(data_to_save, f, indent=2, ensure_ascii=False)
+            # Unlock the file
+            portalocker.unlock(f)
+        
+        # Atomically rename temp file to data file
+        os.replace(temp_file, DATA_FILE)
+    except ImportError:
+        # Fallback to original method if portalocker is not available
+        logger.warning("portalocker not available, using fallback method for file locking")
+        
+        # Encrypt API keys before saving
+        data_to_save = {}
+        for user_id in data:
+            data_to_save[user_id] = data[user_id].copy()
+            if 'bybit_api_key' in data_to_save[user_id]:
+                # Don't encrypt the error marker
+                if data_to_save[user_id]['bybit_api_key'] != "__DECRYPTION_FAILED__":
+                    data_to_save[user_id]['bybit_api_key'] = encrypt_data(data_to_save[user_id]['bybit_api_key'])
+            if 'bybit_api_secret' in data_to_save[user_id]:
+                # Don't encrypt the error marker
+                if data_to_save[user_id]['bybit_api_secret'] != "__DECRYPTION_FAILED__":
+                    data_to_save[user_id]['bybit_api_secret'] = encrypt_data(data_to_save[user_id]['bybit_api_secret'])
+        
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data_to_save, f, indent=2, ensure_ascii=False)
 
 # Load or create user states
 def load_user_states():
@@ -339,6 +372,9 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             import time
             reminder_id = str(int(time.time()))
             
+            # Log for debugging
+            logger.info(f"Creating reminder with title: {title}, reminder_id: {reminder_id}")
+            
             # Initialize reminder structure
             if user_id not in user_data:
                 user_data[user_id] = {
@@ -357,17 +393,50 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 
             user_data[user_id]['reminders'][reminder_id] = {
                 'title': title,
-                'content': '',
+                'content': title,  # Set content to title by default
                 'date': '',
-                'time': ''
+                'time': '',
+                'repeat': 'none'  # Default to no repeat
             }
             
-            # Update user state to add content
-            user_states[user_id] = f'add_reminder_content_{reminder_id}'
+            # Log the created reminder
+            logger.info(f"Created reminder: {user_data[user_id]['reminders'][reminder_id]}")
+            
+            # Save user data
             save_user_data(user_data)
+            
+            # Go directly to date/time selection
+            # Update user state to select date
+            user_states[user_id] = f'add_reminder_date_{reminder_id}'
             save_user_states(user_states)
             
-            await update.message.reply_text('Введите текст напоминания:')
+            # Provide quick date options including new ones
+            keyboard = [
+                [InlineKeyboardButton('Через час', callback_data=f'reminder_date_one_hour_{reminder_id}'), InlineKeyboardButton('Завтра', callback_data=f'reminder_date_tomorrow_{reminder_id}')],
+                [InlineKeyboardButton('В субботу', callback_data=f'reminder_date_saturday_{reminder_id}'), InlineKeyboardButton('15е число', callback_data=f'reminder_date_15th_{reminder_id}')],
+                [InlineKeyboardButton('31е число', callback_data=f'reminder_date_31st_{reminder_id}')],
+                [InlineKeyboardButton('Свое время', callback_data=f'reminder_date_custom_{reminder_id}')],
+                [InlineKeyboardButton('⬅️ Назад', callback_data='reminders_menu')]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(
+                'Когда напомнить? Выберите дату и время для напоминания или введите свою дату в произвольном формате:',
+                reply_markup=reply_markup
+            )
+        elif state.startswith('EDITING_SHOPPING_LIST_'):
+            category_name = state.split('_')[3]
+            new_category_name = update.message.text
+            
+            # Rename category
+            user_data[user_id]['shopping_list'][new_category_name] = user_data[user_id]['shopping_list'].pop(category_name)
+            save_user_data(user_data)
+            
+            await update.message.reply_text(
+                f'Категория переименована: {new_category_name}.',
+                reply_markup=main_menu()
+            )
+
         elif state == 'ADDING_SHOPPING_LIST':
             # Handle adding new shopping list category
             category_name = update.message.text
@@ -414,32 +483,26 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
                 )
             else:
                 await update.message.reply_text('⚠️ Категория с таким названием уже существует. Пожалуйста, введите другое название:')
+        # Skip content input - we go directly from title to date selection
         elif state.startswith('add_reminder_content_'):
-            # Handle reminder content input
+            # This state should not be reached anymore, but just in case
             reminder_id = state.split('_', 3)[3]
-            content = update.message.text
-            
             if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
-                user_data[user_id]['reminders'][reminder_id]['content'] = content
-                save_user_data(user_data)
-                
                 # Update user state to select date
                 user_states[user_id] = f'add_reminder_date_{reminder_id}'
                 save_user_states(user_states)
                 
-                # Provide quick date options
+                # Provide quick date options including new ones
                 keyboard = [
-                    [InlineKeyboardButton('Завтра', callback_data=f'reminder_date_tomorrow_{reminder_id}')],
-                    [InlineKeyboardButton('Послезавтра', callback_data=f'reminder_date_day_after_tomorrow_{reminder_id}')],
-                    [InlineKeyboardButton('Через неделю', callback_data=f'reminder_date_next_week_{reminder_id}')],
-                    [InlineKeyboardButton('15 числа', callback_data=f'reminder_date_15th_{reminder_id}')],
-                    [InlineKeyboardButton('31 числа', callback_data=f'reminder_date_31st_{reminder_id}')],
+                    [InlineKeyboardButton('Через час', callback_data=f'reminder_date_one_hour_{reminder_id}'), InlineKeyboardButton('Завтра', callback_data=f'reminder_date_tomorrow_{reminder_id}')],
+                    [InlineKeyboardButton('В субботу', callback_data=f'reminder_date_saturday_{reminder_id}'), InlineKeyboardButton('15е число', callback_data=f'reminder_date_15th_{reminder_id}')],
+                    [InlineKeyboardButton('31е число', callback_data=f'reminder_date_31st_{reminder_id}')],
                     [InlineKeyboardButton('⬅️ Назад', callback_data='reminders_menu')]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
                 await update.message.reply_text(
-                    'Выберите дату для напоминания или введите свою дату в произвольном формате:',
+                    'Когда напомнить? Выберите дату и время для напоминания или введите свою дату в произвольном формате:',
                     reply_markup=reply_markup
                 )
             else:
@@ -447,24 +510,83 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif state.startswith('add_reminder_date_'):
             # Handle custom date input for new reminder
             reminder_id = state.split('_', 3)[3]
-            date_input = update.message.text
             
-            # Save the date to the reminder
-            if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
-                user_data[user_id]['reminders'][reminder_id]['date'] = date_input
-                save_user_data(user_data)
+            # Parse the natural language date
+            try:
+                parsed_datetime = parse_natural_date(update.message.text)
                 
-                # Update user state to select time
-                user_states[user_id] = f'add_reminder_time_{reminder_id}'
-                save_user_states(user_states)
+                # Convert to ISO format with timezone
+                import pytz
+                DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
+                if parsed_datetime.tzinfo is None:
+                    # Localize to default timezone if no timezone info
+                    parsed_datetime = DEFAULT_TIMEZONE.localize(parsed_datetime)
                 
-                await update.message.reply_text('Введите время для напоминания (в формате ЧЧ:ММ):')
-            else:
-                await update.message.reply_text('Ошибка при создании напоминания. Попробуйте еще раз.')
+                iso_datetime = parsed_datetime.isoformat()
+                
+                # Save the date and time to the reminder
+                if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+                    user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = iso_datetime
+                    save_user_data(user_data)
+                    
+                    # Clear user state
+                    del user_states[user_id]
+                    save_user_states(user_states)
+                    
+                    reminder = user_data[user_id]['reminders'][reminder_id]
+                    title = reminder.get('title', 'Без заголовка')
+                    
+                    # Format display date and time
+                    display_date = parsed_datetime.strftime('%d.%m.%Y')
+                    display_time = parsed_datetime.strftime('%H:%M')
+                    
+                    keyboard = [[InlineKeyboardButton('⬅️ Назад к напоминаниям', callback_data='reminders_menu')]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await update.message.reply_text(
+                        f'✅ Напоминание "{title}" успешно создано на {display_date} в {display_time}!',
+                        reply_markup=reply_markup
+                    )
+                else:
+                    await update.message.reply_text('Ошибка при создании напоминания. Попробуйте еще раз.')
+            except Exception as e:
+                logger.error(f"Error parsing natural date: {e}")
+                await update.message.reply_text('❌ Ошибка при обработке даты. Пожалуйста, введите дату в правильном формате или выберите одну из кнопок.')
         elif state.startswith('add_reminder_time_'):
             # Handle time input for new reminder
             reminder_id = state.split('_', 3)[3]
-            await handle_reminder_time_input(update, context, reminder_id)
+            time_input = update.message.text
+            
+            # Validate time format (should be HH:MM)
+            import re
+            time_pattern = re.compile(r'^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$')
+            if not time_pattern.match(time_input):
+                # If time format is invalid, ask again
+                await update.message.reply_text('⚠️ Неверный формат времени. Пожалуйста, введите время в формате ЧЧ:ММ (например, 14:30):')
+                return
+            
+            # Save the time to the reminder
+            if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+                user_data[user_id]['reminders'][reminder_id]['time'] = time_input
+                save_user_data(user_data)
+                
+                # Clear user state
+                del user_states[user_id]
+                save_user_states(user_states)
+                
+                reminder = user_data[user_id]['reminders'][reminder_id]
+                title = reminder.get('title', 'Без заголовка')
+                date = reminder.get('date', 'Не задана')
+                
+                keyboard = [[InlineKeyboardButton('⬅️ Назад к напоминаниям', callback_data='reminders_menu')]]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await update.message.reply_text(
+                    f'✅ Напоминание "{title}" успешно создано на {date} в {time_input}!',
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.message.reply_text('❌ Ошибка: напоминание не найдено')
         elif state.startswith('edit_reminder_content_'):
             # Handle reminder content editing
             reminder_id = state.split('_', 3)[3]
@@ -489,20 +611,49 @@ async def handle_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         elif state.startswith('reschedule_reminder_date_'):
             # Handle custom date input for rescheduling
             reminder_id = state.split('_', 3)[3]
-            date_input = update.message.text
             
-            # Save the date to the reminder
-            if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
-                user_data[user_id]['reminders'][reminder_id]['date'] = date_input
-                save_user_data(user_data)
+            # Parse the natural language date
+            try:
+                parsed_datetime = parse_natural_date(update.message.text)
                 
-                # Update user state to select time
-                user_states[user_id] = f'reschedule_reminder_time_{reminder_id}'
-                save_user_states(user_states)
+                # Convert to ISO format with timezone
+                import pytz
+                DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
+                if parsed_datetime.tzinfo is None:
+                    # Localize to default timezone if no timezone info
+                    parsed_datetime = DEFAULT_TIMEZONE.localize(parsed_datetime)
                 
-                await update.message.reply_text('Введите время для напоминания (в формате ЧЧ:ММ):')
-            else:
-                await update.message.reply_text('Ошибка при переносе напоминания. Попробуйте еще раз.')
+                iso_datetime = parsed_datetime.isoformat()
+                
+                # Save the date and time to the reminder
+                if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+                    user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = iso_datetime
+                    user_data[user_id]['reminders'][reminder_id]['sent'] = False  # Reset sent flag
+                    save_user_data(user_data)
+                    
+                    # Clear user state
+                    del user_states[user_id]
+                    save_user_states(user_states)
+                    
+                    reminder = user_data[user_id]['reminders'][reminder_id]
+                    title = reminder.get('title', 'Без заголовка')
+                    
+                    # Format display date and time
+                    display_date = parsed_datetime.strftime('%d.%m.%Y')
+                    display_time = parsed_datetime.strftime('%H:%M')
+                    
+                    keyboard = [[InlineKeyboardButton('⬅️ Назад к напоминаниям', callback_data='reminders_menu')]]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await update.message.reply_text(
+                        f'✅ Напоминание "{title}" успешно перенесено на {display_date} в {display_time}!',
+                        reply_markup=reply_markup
+                    )
+                else:
+                    await update.message.reply_text('Ошибка при переносе напоминания. Попробуйте еще раз.')
+            except Exception as e:
+                logger.error(f"Error parsing natural date: {e}")
+                await update.message.reply_text('❌ Ошибка при обработке даты. Пожалуйста, введите дату в правильном формате или выберите одну из кнопок.')
         elif state.startswith('reschedule_reminder_time_'):
             # Handle time input for rescheduling
             reminder_id = state.split('_', 3)[3]
@@ -1877,18 +2028,42 @@ async def handle_view_reminder_callback(query, context: ContextTypes.DEFAULT_TYP
         reminder = user_data[user_id]['reminders'][reminder_id]
         title = reminder.get('title', 'Без заголовка')
         content = reminder.get('content', 'Пустое напоминание')
-        date = reminder.get('date', 'Не задана')
-        time = reminder.get('time', 'Не задано')
+        
+        # Handle different date formats
+        if 'scheduled_at' in reminder and reminder['scheduled_at']:
+            # ISO format with timezone
+            try:
+                scheduled_time = datetime.fromisoformat(reminder['scheduled_at'])
+                date = scheduled_time.strftime('%d.%m.%Y')
+                time = scheduled_time.strftime('%H:%M')
+            except:
+                date = 'Не задана'
+                time = 'Не задано'
+        else:
+            # Old format
+            date = reminder.get('date', 'Не задана')
+            time = reminder.get('time', 'Не задано')
+        
+        # Get repeat information
+        repeat = reminder.get('repeat', 'none')
+        repeat_text = {
+            'none': 'Не повторяется',
+            'daily': 'Ежедневно',
+            'weekly': 'Еженедельно',
+            'monthly': 'Ежемесячно',
+            'weekdays': 'По будням'
+        }.get(repeat, 'Не повторяется')
         
         keyboard = [
             [InlineKeyboardButton('✏️ Редактировать', callback_data=f'edit_reminder_{reminder_id}')],
             [InlineKeyboardButton('📆 Перенести', callback_data=f'reschedule_reminder_{reminder_id}')],
+            [InlineKeyboardButton('🔄 Повтор', callback_data=f'repeat_reminder_{reminder_id}')],
             [InlineKeyboardButton('🗑️ Удалить', callback_data=f'delete_reminder_{reminder_id}')],
             [InlineKeyboardButton('⬅️ Назад', callback_data='reminders_menu')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        message_text = f"⏰ <b>{title}</b>\n\n{content}\n\n📅 Дата: {date}\n🕘 Время: {time}"
+        message_text = f"⏰ <b>{title}</b>\n\n{content}\n\n📅 Дата: {date}\n🕘 Время: {time}\n🔁 Повтор: {repeat_text}"
         await query.edit_message_text(text=message_text, reply_markup=reply_markup, parse_mode='HTML')
     else:
         keyboard = [[InlineKeyboardButton('⬅️ Назад', callback_data='reminders_menu')]]
@@ -1916,6 +2091,37 @@ async def handle_edit_reminder_callback(query, context: ContextTypes.DEFAULT_TYP
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         message_text = f"Введите новый текст напоминания:\n\nТекущий текст:\n{current_content}"
+        await query.edit_message_text(text=message_text, reply_markup=reply_markup)
+        
+# Handle repeat reminder callback
+async def handle_repeat_reminder_callback(query, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+        # Get current repeat setting
+        current_repeat = user_data[user_id]['reminders'][reminder_id].get('repeat', 'none')
+        
+        # Create keyboard with repeat options
+        keyboard = [
+            [InlineKeyboardButton('Не повторять', callback_data=f'set_repeat_none_{reminder_id}')],
+            [InlineKeyboardButton('Ежедневно', callback_data=f'set_repeat_daily_{reminder_id}')],
+            [InlineKeyboardButton('Еженедельно', callback_data=f'set_repeat_weekly_{reminder_id}')],
+            [InlineKeyboardButton('Ежемесячно', callback_data=f'set_repeat_monthly_{reminder_id}')],
+            [InlineKeyboardButton('По будням', callback_data=f'set_repeat_weekdays_{reminder_id}')],
+            [InlineKeyboardButton('⬅️ Назад', callback_data=f'view_reminder_{reminder_id}')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        repeat_text = {
+            'none': 'Не повторяется',
+            'daily': 'Ежедневно',
+            'weekly': 'Еженедельно',
+            'monthly': 'Ежемесячно',
+            'weekdays': 'По будням'
+        }.get(current_repeat, 'Не повторяется')
+        
+        message_text = f"🔁 Настройка повторения напоминания\n\nТекущая настройка: {repeat_text}\n\nВыберите вариант повторения:"
         await query.edit_message_text(text=message_text, reply_markup=reply_markup)
     else:
         keyboard = [[InlineKeyboardButton('⬅️ Назад', callback_data='reminders_menu')]]
@@ -1950,6 +2156,93 @@ async def handle_delete_reminder_callback(query, context: ContextTypes.DEFAULT_T
             reply_markup=reply_markup
         )
 
+# Function to parse natural language dates
+def parse_natural_date(date_text):
+    """Parse natural language date text into a datetime object"""
+    import datetime
+    import re
+    
+    now = datetime.datetime.now()
+    date_text = date_text.lower().strip()
+    
+    # Default time is 13:00 if not specified
+    hour = 13
+    minute = 0
+    
+    # Check for time expressions and extract time
+    time_patterns = [
+        (r'(\d{1,2})[:.](\d{2})', lambda m: (int(m.group(1)), int(m.group(2)))),  # HH:MM or HH.MM
+        (r'(\d{1,2})\s*(час[аов]?)', lambda m: (int(m.group(1)), 0)),  # "14 часов"
+        (r'обед', lambda m: (14, 0)),  # "обед" = 14:00
+        (r'утр[оа]', lambda m: (10, 0)),  # "утром" = 10:00
+        (r'вечер[оа]м?', lambda m: (18, 0)),  # "вечером" = 18:00
+        (r'ночью', lambda m: (23, 0)),  # "ночью" = 23:00
+    ]
+    
+    for pattern, time_func in time_patterns:
+        match = re.search(pattern, date_text)
+        if match:
+            hour, minute = time_func(match)
+            # Remove the time part from the text to avoid confusion
+            date_text = re.sub(pattern, '', date_text).strip()
+            break
+    
+    # Check for date expressions
+    if 'сегодня' in date_text:
+        selected_date = now.date()
+    elif 'завтра' in date_text:
+        selected_date = now.date() + datetime.timedelta(days=1)
+    elif 'послезавтра' in date_text:
+        selected_date = now.date() + datetime.timedelta(days=2)
+    elif 'пн' in date_text or 'понедельник' in date_text:
+        # Find next Monday
+        days_ahead = 0 - now.weekday()  # Monday is 0
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+    elif 'вт' in date_text or 'вторник' in date_text:
+        # Find next Tuesday
+        days_ahead = 1 - now.weekday()  # Tuesday is 1
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+    elif 'ср' in date_text or 'среда' in date_text:
+        # Find next Wednesday
+        days_ahead = 2 - now.weekday()  # Wednesday is 2
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+    elif 'чт' in date_text or 'четверг' in date_text:
+        # Find next Thursday
+        days_ahead = 3 - now.weekday()  # Thursday is 3
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+    elif 'пт' in date_text or 'пятница' in date_text:
+        # Find next Friday
+        days_ahead = 4 - now.weekday()  # Friday is 4
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+    elif 'сб' in date_text or 'суббота' in date_text:
+        # Find next Saturday
+        days_ahead = 5 - now.weekday()  # Saturday is 5
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+    elif 'вс' in date_text or 'воскресенье' in date_text:
+        # Find next Sunday
+        days_ahead = 6 - now.weekday()  # Sunday is 6
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+    else:
+        # If no specific date mentioned, default to today
+        selected_date = now.date()
+    
+    # Combine date and time
+    return datetime.datetime.combine(selected_date, datetime.time(hour, minute))
+
 # Handle reschedule reminder callback
 async def handle_reschedule_reminder_callback(query, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
     user_id = str(query.from_user.id)
@@ -1981,71 +2274,320 @@ async def handle_reminder_date_selection(query, context: ContextTypes.DEFAULT_TY
     user_data = load_user_data()
     user_states = load_user_states()
     
-    import datetime
+    # Log for debugging
+    logger.info(f"handle_reminder_date_selection called with user_id: {user_id}, date_type: {date_type}, reminder_id: {reminder_id}")
+    logger.info(f"Current user_data keys: {list(user_data.keys())}")
+    if user_id in user_data:
+        logger.info(f"User reminders: {user_data[user_id].get('reminders', {})}")
     
-    # Calculate the date based on selection
-    today = datetime.date.today()
-    if date_type == 'tomorrow':
-        selected_date = today + datetime.timedelta(days=1)
-    elif date_type == 'day_after_tomorrow':
-        selected_date = today + datetime.timedelta(days=2)
-    elif date_type == 'next_week':
-        selected_date = today + datetime.timedelta(days=7)
+    import datetime
+    import pytz
+    
+    # Default timezone
+    DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
+    
+    # Calculate the date and time based on selection
+    now = datetime.datetime.now(DEFAULT_TIMEZONE)
+    selected_time = datetime.time(13, 0)  # Default time
+    
+    if date_type == 'one_hour':
+        # Set to one hour from now
+        reminder_datetime = now + datetime.timedelta(hours=1)
+        selected_date = reminder_datetime.date()
+        selected_time = reminder_datetime.time()
+    elif date_type == 'tomorrow':
+        selected_date = now.date() + datetime.timedelta(days=1)
+        selected_time = datetime.time(9, 0)  # Default to 9 AM
+    elif date_type == 'saturday':
+        # Find next Saturday
+        days_ahead = 5 - now.weekday()  # Saturday is 5 (Monday is 0)
+        if days_ahead <= 0:  # Target day already happened this week
+            days_ahead += 7
+        selected_date = now.date() + datetime.timedelta(days_ahead)
+        selected_time = datetime.time(9, 0)  # Default to 9 AM
     elif date_type == '15th':
         # Find the next 15th of the month
-        if today.day <= 15:
-            selected_date = today.replace(day=15)
+        if now.day < 15:
+            selected_date = now.date().replace(day=15)
         else:
             # Move to next month
-            if today.month == 12:
-                selected_date = today.replace(year=today.year + 1, month=1, day=15)
+            if now.month == 12:
+                selected_date = now.date().replace(year=now.year + 1, month=1, day=15)
             else:
-                selected_date = today.replace(month=today.month + 1, day=15)
+                selected_date = now.date().replace(month=now.month + 1, day=15)
+        selected_time = datetime.time(9, 0)  # Default to 9 AM
     elif date_type == '31st':
         # Find the next 31st of the month (or last day if month doesn't have 31 days)
-        if today.day <= 31:
+        if now.day < 31:
             try:
-                selected_date = today.replace(day=31)
+                selected_date = now.date().replace(day=31)
             except ValueError:
                 # This month doesn't have 31 days, use last day of month
-                if today.month == 12:
-                    selected_date = today.replace(year=today.year + 1, month=1, day=1)
+                if now.month == 12:
+                    selected_date = now.date().replace(year=now.year + 1, month=1, day=1)
                 else:
-                    selected_date = today.replace(month=today.month + 1, day=1) - datetime.timedelta(days=1)
+                    selected_date = now.date().replace(month=now.month + 1, day=1) - datetime.timedelta(days=1)
         else:
             # Move to next month
-            if today.month == 12:
-                selected_date = today.replace(year=today.year + 1, month=1, day=1)
+            if now.month == 12:
+                selected_date = now.date().replace(year=now.year + 1, month=1, day=1)
             else:
-                selected_date = today.replace(month=today.month + 1, day=1) - datetime.timedelta(days=1)
+                selected_date = now.date().replace(month=now.month + 1, day=1) - datetime.timedelta(days=1)
             # Check if this month has 31 days
             if selected_date.day < 31:
                 # Find the last day of this month which will be less than 31
                 pass
             else:
                 selected_date = selected_date.replace(day=31)
+        selected_time = datetime.time(9, 0)  # Default to 9 AM
+    elif date_type == 'custom':
+        # For custom date, we need to ask user to input date and time
+        # Set user state to wait for custom date input
+        user_states[user_id] = f'add_reminder_date_{reminder_id}'
+        save_user_states(user_states)
+        
+        keyboard = [[InlineKeyboardButton('⬅️ Назад', callback_data='reminders_menu')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            'Введите дату и время напоминания в произвольном формате:\n\nПримеры:\n- сб - ближайшая суббота\n- пн - ближайший понедельник\n- завтра в обед - завтра в 14:00\n- завтра утром - завтра в 10:00\n- послезавтра вечером - послезавтра в 18:00',
+            reply_markup=reply_markup
+        )
+        return
     else:
-        selected_date = today
+        selected_date = now.date()
+        selected_time = datetime.time(13, 0)  # Default to 13:00
     
-    # Format the date as DD.MM.YYYY
-    formatted_date = selected_date.strftime('%d.%m.%Y')
+    # Combine date and time
+    combined_datetime = datetime.datetime.combine(selected_date, selected_time)
+    # Localize to default timezone
+    combined_datetime = DEFAULT_TIMEZONE.localize(combined_datetime)
+    # Convert to ISO format
+    iso_datetime = combined_datetime.isoformat()
     
-    # Save the date to the reminder
+    # Save the date and time to the reminder
+    logger.info(f"Checking if user_id {user_id} in user_data: {user_id in user_data}")
+    if user_id in user_data:
+        logger.info(f"Checking if reminder_id {reminder_id} in user_data[{user_id}]['reminders']: {reminder_id in user_data[user_id].get('reminders', {})}")
+    
     if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
-        user_data[user_id]['reminders'][reminder_id]['date'] = formatted_date
+        # Check if reminder has already been processed
+        reminder = user_data[user_id]['reminders'][reminder_id]
+        if reminder.get('scheduled_at') and reminder.get('sent', False):
+            # Reminder already has date and time set and was sent
+            keyboard = [[InlineKeyboardButton('⬅️ Назад к напоминаниям', callback_data='reminders_menu')]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Format display date and time
+            scheduled_time = datetime.datetime.fromisoformat(reminder['scheduled_at'])
+            display_date = scheduled_time.strftime('%d.%m.%Y')
+            display_time = scheduled_time.strftime('%H:%M')
+            
+            await query.edit_message_text(
+                f'✅ Напоминание "{reminder.get("title", "Без заголовка")}" уже создано на {display_date} в {display_time}!',
+                reply_markup=reply_markup
+            )
+            return
+        
+        user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = iso_datetime
+        user_data[user_id]['reminders'][reminder_id]['sent'] = False  # Reset sent flag for rescheduled reminders
         save_user_data(user_data)
+        
+        # Clear user state
+        if user_id in user_states:
+            del user_states[user_id]
+            save_user_states(user_states)
+        
+        title = reminder.get('title', 'Без заголовка')
+        
+        keyboard = [[InlineKeyboardButton('⬅️ Назад к напоминаниям', callback_data='reminders_menu')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        # Format display date and time
+        display_date = combined_datetime.strftime('%d.%m.%Y')
+        display_time = combined_datetime.strftime('%H:%M')
+        
+        await query.edit_message_text(
+            f'✅ Напоминание "{title}" успешно создано на {display_date} в {display_time}!',
+            reply_markup=reply_markup
+        )
+    else:
+        logger.error(f"Reminder not found. user_id: {user_id}, reminder_id: {reminder_id}")
+        logger.error(f"Available users: {list(user_data.keys())}")
+        if user_id in user_data:
+            logger.error(f"Available reminders for user {user_id}: {list(user_data[user_id].get('reminders', {}).keys())}")
+        await query.edit_message_text('❌ Ошибка: напоминание не найдено')
+
+# Handle reminder reschedule for one hour
+async def handle_reminder_reschedule_one_hour(query, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
     
-    # Set state to collect time
-    user_states[user_id] = f'reschedule_reminder_time_{reminder_id}'
-    save_user_states(user_states)
+    import datetime
+    import pytz
     
-    keyboard = [[InlineKeyboardButton('⬅️ Назад', callback_data=f'view_reminder_{reminder_id}')]]
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    # Default timezone
+    DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
     
-    await query.edit_message_text(
-        text=f'Выбрана дата: {formatted_date}\n\nВведите время для напоминания (в формате ЧЧ:ММ):',
-        reply_markup=reply_markup
-    )
+    if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+        # Calculate new date and time (one hour from now)
+        now = datetime.datetime.now(DEFAULT_TIMEZONE)
+        new_datetime = now + datetime.timedelta(hours=1)
+        # Convert to ISO format
+        iso_datetime = new_datetime.isoformat()
+        
+        # Update reminder
+        user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = iso_datetime
+        user_data[user_id]['reminders'][reminder_id]['sent'] = False  # Reset sent flag
+        
+        # Handle repeat logic
+        repeat = user_data[user_id]['reminders'][reminder_id].get('repeat', 'none')
+        if repeat != 'none':
+            # For repeating reminders, we don't mark as sent, but recalculate next occurrence
+            pass
+        else:
+            # For non-repeating reminders, mark as sent after sending
+            user_data[user_id]['reminders'][reminder_id]['sent'] = True
+            
+        save_user_data(user_data)
+        
+        title = user_data[user_id]['reminders'][reminder_id]['title']
+        
+        # Format display date and time
+        display_date = new_datetime.strftime('%d.%m.%Y')
+        display_time = new_datetime.strftime('%H:%M')
+        
+        await query.edit_message_text(
+            f'✅ Напоминание "{title}" перенесено на {display_date} в {display_time}'
+        )
+    else:
+        await query.edit_message_text('❌ Ошибка: напоминание не найдено')
+
+# Handle reminder reschedule for tomorrow
+async def handle_reminder_reschedule_tomorrow(query, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    import datetime
+    import pytz
+    
+    # Default timezone
+    DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
+    
+    if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+        # Calculate new date and time (tomorrow at 9:00 AM)
+        now = datetime.datetime.now(DEFAULT_TIMEZONE)
+        new_datetime = (now + datetime.timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+        # Convert to ISO format
+        iso_datetime = new_datetime.isoformat()
+        
+        # Update reminder
+        user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = iso_datetime
+        user_data[user_id]['reminders'][reminder_id]['sent'] = False  # Reset sent flag
+        
+        # Handle repeat logic
+        repeat = user_data[user_id]['reminders'][reminder_id].get('repeat', 'none')
+        if repeat != 'none':
+            # For repeating reminders, we don't mark as sent, but recalculate next occurrence
+            pass
+        else:
+            # For non-repeating reminders, mark as sent after sending
+            user_data[user_id]['reminders'][reminder_id]['sent'] = True
+            
+        save_user_data(user_data)
+        
+        title = user_data[user_id]['reminders'][reminder_id]['title']
+        
+        # Format display date and time
+        display_date = new_datetime.strftime('%d.%m.%Y')
+        display_time = new_datetime.strftime('%H:%M')
+        
+        await query.edit_message_text(
+            f'✅ Напоминание "{title}" перенесено на {display_date} в {display_time}'
+        )
+    else:
+        await query.edit_message_text('❌ Ошибка: напоминание не найдено')
+
+# Handle reminder reschedule for custom date/time
+async def handle_reminder_reschedule_custom(query, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    user_states = load_user_states()
+    
+    if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+        # Set state to wait for custom date input
+        user_states[user_id] = f'reschedule_reminder_date_{reminder_id}'
+        save_user_states(user_states)
+        
+        # Provide quick date options
+        keyboard = [
+            [InlineKeyboardButton('Завтра', callback_data=f'reminder_date_tomorrow_{reminder_id}')],
+            [InlineKeyboardButton('Послезавтра', callback_data=f'reminder_date_day_after_tomorrow_{reminder_id}')],
+            [InlineKeyboardButton('Через неделю', callback_data=f'reminder_date_next_week_{reminder_id}')],
+            [InlineKeyboardButton('15 числа', callback_data=f'reminder_date_15th_{reminder_id}')],
+            [InlineKeyboardButton('31 числа', callback_data=f'reminder_date_31st_{reminder_id}')],
+            [InlineKeyboardButton('Свое время', callback_data=f'reminder_date_custom_{reminder_id}')],
+            [InlineKeyboardButton('⬅️ Назад', callback_data=f'view_reminder_{reminder_id}')]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text='Выберите дату для напоминания или введите свою дату в произвольном формате:',
+            reply_markup=reply_markup
+        )
+    else:
+        await query.edit_message_text('❌ Ошибка: напоминание не найдено')
+
+# Handle reminder deletion
+async def handle_reminder_delete(query, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
+    pass
+
+# Handle set repeat callback
+async def handle_set_repeat_callback(query, context: ContextTypes.DEFAULT_TYPE, repeat_type: str, reminder_id: str) -> None:
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+        # Update repeat setting
+        user_data[user_id]['reminders'][reminder_id]['repeat'] = repeat_type
+        save_user_data(user_data)
+        
+        # Get repeat text
+        repeat_text = {
+            'none': 'Не повторяется',
+            'daily': 'Ежедневно',
+            'weekly': 'Еженедельно',
+            'monthly': 'Ежемесячно',
+            'weekdays': 'По будням'
+        }.get(repeat_type, 'Не повторяется')
+        
+        # Show confirmation and return to reminder view
+        await query.answer(f"Повтор установлен: {repeat_text}")
+        
+        # Show updated reminder
+        await handle_view_reminder_callback(query, context, reminder_id)
+    else:
+        keyboard = [[InlineKeyboardButton('⬅️ Назад', callback_data='reminders_menu')]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            text='Напоминание не найдено.',
+            reply_markup=reply_markup
+        )
+
+    user_id = str(query.from_user.id)
+    user_data = load_user_data()
+    
+    if user_id in user_data and reminder_id in user_data[user_id]['reminders']:
+        title = user_data[user_id]['reminders'][reminder_id]['title']
+        # Remove the reminder
+        del user_data[user_id]['reminders'][reminder_id]
+        save_user_data(user_data)
+        
+        await query.edit_message_text(
+            f'✅ Напоминание "{title}" удалено'
+        )
+    else:
+        await query.edit_message_text('❌ Ошибка: напоминание не найдено')
 
 # Handle reminder time input
 async def handle_reminder_time_input(update: Update, context: ContextTypes.DEFAULT_TYPE, reminder_id: str) -> None:
@@ -2511,13 +3053,58 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
         elif data.startswith('reschedule_reminder_'):
             reminder_id = data.split('_', 2)[2]
             await handle_reschedule_reminder_callback(query, context, reminder_id)
-        elif data.startswith('reminder_date_'):
-            # Parse the date type and reminder_id
+        elif data.startswith('repeat_reminder_'):
+            reminder_id = data.split('_', 2)[2]
+            await handle_repeat_reminder_callback(query, context, reminder_id)
+        elif data.startswith('set_repeat_'):
+            # Parse repeat type and reminder_id
             parts = data.split('_')
             if len(parts) >= 4:
-                date_type = parts[2]
-                reminder_id = parts[3]
+                repeat_type = parts[2]
+                reminder_id = '_'.join(parts[3:])
+                await handle_set_repeat_callback(query, context, repeat_type, reminder_id)
+        elif data.startswith('reminder_date_'):
+            # Parse the date type and reminder_id
+            # Handle different formats: reminder_date_one_hour_12345 or reminder_date_15th_12345
+            parts = data.split('_')
+            if len(parts) >= 4:
+                # Extract date type (could be one_hour, tomorrow, saturday, 15th, 31st, custom)
+                if parts[2] == 'one' and parts[3] == 'hour':
+                    date_type = 'one_hour'
+                    reminder_id = '_'.join(parts[4:])  # Join the rest in case of underscores in ID
+                elif parts[2] == '15th':
+                    date_type = '15th'
+                    reminder_id = '_'.join(parts[3:])  # Join the rest in case of underscores in ID
+                elif parts[2] == '31st':
+                    date_type = '31st'
+                    reminder_id = '_'.join(parts[3:])  # Join the rest in case of underscores in ID
+                elif parts[2] == 'custom':
+                    date_type = 'custom'
+                    reminder_id = '_'.join(parts[3:])  # Join the rest in case of underscores in ID
+                else:
+                    date_type = parts[2]
+                    reminder_id = '_'.join(parts[3:])  # Join the rest in case of underscores in ID
+                
+                # Log for debugging
+                logger.info(f"Parsed date_type: {date_type}, reminder_id: {reminder_id}")
+                
                 await handle_reminder_date_selection(query, context, date_type, reminder_id)
+        elif data.startswith('reminder_reschedule_one_hour_'):
+            # Handle "Через час" reschedule from notification
+            reminder_id = data.replace('reminder_reschedule_one_hour_', '')
+            await handle_reminder_reschedule_one_hour(query, context, reminder_id)
+        elif data.startswith('reminder_reschedule_tomorrow_'):
+            # Handle "На завтра" reschedule from notification
+            reminder_id = data.replace('reminder_reschedule_tomorrow_', '')
+            await handle_reminder_reschedule_tomorrow(query, context, reminder_id)
+        elif data.startswith('reminder_reschedule_custom_'):
+            # Handle "Произвольно" reschedule from notification
+            reminder_id = data.replace('reminder_reschedule_custom_', '')
+            await handle_reminder_reschedule_custom(query, context, reminder_id)
+        elif data.startswith('reminder_delete_'):
+            # Handle reminder deletion from notification
+            reminder_id = data.replace('reminder_delete_', '')
+            await handle_reminder_delete(query, context, reminder_id)
         elif data == 'enter_api_keys':
             await handle_enter_api_keys_callback(query, context)
         elif data.startswith('deposit_'):
@@ -2760,6 +3347,8 @@ def main():
 
     # Schedule the reminder checking task to run after the bot starts
     async def post_init_callback(app):
+        # Process pending reminders on startup
+        await process_pending_reminders_on_startup(app)
         app.create_task(check_and_send_reminders(app))
     
     application.post_init = post_init_callback
@@ -2774,13 +3363,15 @@ async def check_and_send_reminders(application) -> None:
     """Check for reminders that should be sent and send them"""
     import datetime
     import asyncio
+    import pytz
+    
+    # Default timezone (can be changed to user's timezone)
+    DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
     
     while True:
         try:
-            # Get current date and time
-            now = datetime.datetime.now()
-            current_date = now.strftime('%d.%m.%Y')
-            current_time = now.strftime('%H:%M')
+            # Get current date and time with timezone
+            now = datetime.datetime.now(DEFAULT_TIMEZONE)
             
             # Load user data
             user_data = load_user_data()
@@ -2789,32 +3380,140 @@ async def check_and_send_reminders(application) -> None:
             for user_id, data in user_data.items():
                 if 'reminders' in data:
                     for reminder_id, reminder in data['reminders'].items():
-                        # Check if reminder date and time match current date and time
-                        # and if it hasn't been sent yet
-                        if (reminder.get('date') == current_date and 
-                            reminder.get('time') == current_time and
-                            not reminder.get('sent', False)):
-                            try:
-                                # Mark reminder as sent to avoid duplicate notifications
-                                user_data[user_id]['reminders'][reminder_id]['sent'] = True
-                                save_user_data(user_data)
+                        try:
+                            # Check if reminder has ISO format with timezone
+                            if 'scheduled_at' in reminder and reminder['scheduled_at']:
+                                # Parse the scheduled time with timezone
+                                scheduled_time = datetime.datetime.fromisoformat(reminder['scheduled_at'])
                                 
-                                # Send reminder message to user
-                                title = reminder.get('title', 'Напоминание')
-                                content = reminder.get('content', '')
+                                # Check if reminder should be sent (with 24-hour window)
+                                if (scheduled_time <= now and 
+                                    not reminder.get('sent', False) and
+                                    now - scheduled_time < timedelta(hours=24)):
+                                    try:
+                                        # Send reminder message to user in the required format
+                                        title = reminder.get('title', 'Напоминание')
+                                        
+                                        message = f"⏰ Вы просили напомнить \"{title}\""
+                                        
+                                        # Create inline keyboard with reschedule and delete options
+                                        keyboard = [
+                                            [
+                                                InlineKeyboardButton('Через час', callback_data=f'reminder_reschedule_one_hour_{reminder_id}'),
+                                                InlineKeyboardButton('На завтра', callback_data=f'reminder_reschedule_tomorrow_{reminder_id}')
+                                            ],
+                                            [
+                                                InlineKeyboardButton('Произвольно', callback_data=f'reminder_reschedule_custom_{reminder_id}'),
+                                                InlineKeyboardButton('Удалить', callback_data=f'reminder_delete_{reminder_id}')
+                                            ]
+                                        ]
+                                        reply_markup = InlineKeyboardMarkup(keyboard)
+                                        
+                                        # Send message to user
+                                        await application.bot.send_message(
+                                            chat_id=int(user_id),
+                                            text=message,
+                                            reply_markup=reply_markup
+                                        )
+                                        
+                                        # Handle repeat logic
+                                        repeat = reminder.get('repeat', 'none')
+                                        if repeat != 'none':
+                                            # For repeating reminders, calculate next occurrence
+                                            next_time = calculate_next_occurrence(scheduled_time, repeat)
+                                            if next_time:
+                                                # Update scheduled time for next occurrence
+                                                user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = next_time.isoformat()
+                                                # Keep sent as False for next occurrence
+                                                user_data[user_id]['reminders'][reminder_id]['sent'] = False
+                                            else:
+                                                # If can't calculate next occurrence, mark as sent
+                                                user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                        else:
+                                            # For non-repeating reminders, mark as sent
+                                            user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                            
+                                        save_user_data(user_data)
+                                        
+                                        logger.info(f"Sent reminder '{title}' to user {user_id}")
+                                    except Exception as e:
+                                        logger.error(f"Failed to send reminder to user {user_id}: {e}")
+                            
+                            # For backward compatibility with old format
+                            elif (reminder.get('date') and reminder.get('time') and
+                                  not reminder.get('sent', False)):
+                                # Parse old format
+                                date_str = reminder.get('date', '')
+                                time_str = reminder.get('time', '')
                                 
-                                message = f"⏰ <b>{title}</b>\n\n{content}"
-                                
-                                # Send message to user
-                                await application.bot.send_message(
-                                    chat_id=int(user_id),
-                                    text=message,
-                                    parse_mode='HTML'
-                                )
-                                
-                                logger.info(f"Sent reminder '{title}' to user {user_id}")
-                            except Exception as e:
-                                logger.error(f"Failed to send reminder to user {user_id}: {e}")
+                                if date_str and time_str:
+                                    # Combine date and time
+                                    datetime_str = f"{date_str} {time_str}"
+                                    try:
+                                        # Parse the datetime string
+                                        reminder_datetime = datetime.datetime.strptime(datetime_str, '%d.%m.%Y %H:%M')
+                                        # Localize to default timezone
+                                        reminder_datetime = DEFAULT_TIMEZONE.localize(reminder_datetime)
+                                        
+                                        # Check if reminder should be sent (with 24-hour window)
+                                        if (reminder_datetime <= now and 
+                                            now - reminder_datetime < timedelta(hours=24)):
+                                            try:
+                                                # Send reminder message to user in the required format
+                                                title = reminder.get('title', 'Напоминание')
+                                                
+                                                message = f"⏰ Вы просили напомнить \"{title}\""
+                                                
+                                                # Create inline keyboard with reschedule and delete options
+                                                keyboard = [
+                                                    [
+                                                        InlineKeyboardButton('Через час', callback_data=f'reminder_reschedule_one_hour_{reminder_id}'),
+                                                        InlineKeyboardButton('На завтра', callback_data=f'reminder_reschedule_tomorrow_{reminder_id}')
+                                                    ],
+                                                    [
+                                                        InlineKeyboardButton('Произвольно', callback_data=f'reminder_reschedule_custom_{reminder_id}'),
+                                                        InlineKeyboardButton('Удалить', callback_data=f'reminder_delete_{reminder_id}')
+                                                    ]
+                                                ]
+                                                reply_markup = InlineKeyboardMarkup(keyboard)
+                                                
+                                                # Send message to user
+                                                await application.bot.send_message(
+                                                    chat_id=int(user_id),
+                                                    text=message,
+                                                    reply_markup=reply_markup
+                                                )
+                                                
+                                                # Handle repeat logic
+                                                repeat = reminder.get('repeat', 'none')
+                                                if repeat != 'none':
+                                                    # For repeating reminders, calculate next occurrence
+                                                    next_time = calculate_next_occurrence(reminder_datetime, repeat)
+                                                    if next_time:
+                                                        # Update scheduled time for next occurrence
+                                                        user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = next_time.isoformat()
+                                                        # Convert old format to new format
+                                                        user_data[user_id]['reminders'][reminder_id]['date'] = ''
+                                                        user_data[user_id]['reminders'][reminder_id]['time'] = ''
+                                                        # Keep sent as False for next occurrence
+                                                        user_data[user_id]['reminders'][reminder_id]['sent'] = False
+                                                    else:
+                                                        # If can't calculate next occurrence, mark as sent
+                                                        user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                                else:
+                                                    # For non-repeating reminders, mark as sent
+                                                    user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                                    
+                                                save_user_data(user_data)
+                                                
+                                                logger.info(f"Sent reminder '{title}' to user {user_id}")
+                                            except Exception as e:
+                                                logger.error(f"Failed to send reminder to user {user_id}: {e}")
+                                    except ValueError:
+                                        # Invalid date/time format
+                                        logger.error(f"Invalid date/time format for reminder {reminder_id} of user {user_id}")
+                        except Exception as e:
+                            logger.error(f"Error processing reminder {reminder_id} for user {user_id}: {e}")
             
             # Wait for 60 seconds before checking again
             await asyncio.sleep(60)
@@ -2824,3 +3523,211 @@ async def check_and_send_reminders(application) -> None:
 
 if __name__ == "__main__":
     main()
+
+# Function to process pending reminders on startup
+async def process_pending_reminders_on_startup(application) -> None:
+    """Process all pending reminders on bot startup"""
+    import datetime
+    import pytz
+    
+    try:
+        logger.info("Processing pending reminders on startup...")
+        
+        # Default timezone (can be changed to user's timezone)
+        DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
+        
+        # Get current date and time with timezone
+        now = datetime.datetime.now(DEFAULT_TIMEZONE)
+        
+        # Load user data
+        user_data = load_user_data()
+        
+        # Track if any reminders were processed
+        reminders_processed = False
+        
+        # Check each user's reminders
+        for user_id, data in user_data.items():
+            if 'reminders' in data:
+                for reminder_id, reminder in data['reminders'].items():
+                    try:
+                        # Check if reminder has ISO format with timezone
+                        if 'scheduled_at' in reminder and reminder['scheduled_at']:
+                            # Parse the scheduled time with timezone
+                            scheduled_time = datetime.datetime.fromisoformat(reminder['scheduled_at'])
+                            
+                            # Check if reminder should be sent (with 24-hour window)
+                            if (scheduled_time <= now and 
+                                not reminder.get('sent', False) and
+                                now - scheduled_time < timedelta(hours=24)):
+                                try:
+                                    # Send reminder message to user in the required format
+                                    title = reminder.get('title', 'Напоминание')
+                                    
+                                    message = f"⏰ Вы просили напомнить \"{title}\""
+                                    
+                                    # Create inline keyboard with reschedule and delete options
+                                    keyboard = [
+                                        [
+                                            InlineKeyboardButton('Через час', callback_data=f'reminder_reschedule_one_hour_{reminder_id}'),
+                                            InlineKeyboardButton('На завтра', callback_data=f'reminder_reschedule_tomorrow_{reminder_id}')
+                                        ],
+                                        [
+                                            InlineKeyboardButton('Произвольно', callback_data=f'reminder_reschedule_custom_{reminder_id}'),
+                                            InlineKeyboardButton('Удалить', callback_data=f'reminder_delete_{reminder_id}')
+                                        ]
+                                    ]
+                                    reply_markup = InlineKeyboardMarkup(keyboard)
+                                    
+                                    # Send message to user
+                                    await application.bot.send_message(
+                                        chat_id=int(user_id),
+                                        text=message,
+                                        reply_markup=reply_markup
+                                    )
+                                    
+                                    # Handle repeat logic
+                                    repeat = reminder.get('repeat', 'none')
+                                    if repeat != 'none':
+                                        # For repeating reminders, calculate next occurrence
+                                        next_time = calculate_next_occurrence(scheduled_time, repeat)
+                                        if next_time:
+                                            # Update scheduled time for next occurrence
+                                            user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = next_time.isoformat()
+                                            # Keep sent as False for next occurrence
+                                            user_data[user_id]['reminders'][reminder_id]['sent'] = False
+                                        else:
+                                            # If can't calculate next occurrence, mark as sent
+                                            user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                    else:
+                                        # For non-repeating reminders, mark as sent
+                                        user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                        
+                                    save_user_data(user_data)
+                                    
+                                    logger.info(f"Sent pending reminder '{title}' to user {user_id} on startup")
+                                    reminders_processed = True
+                                except Exception as e:
+                                    logger.error(f"Failed to send pending reminder to user {user_id}: {e}")
+                        
+                        # For backward compatibility with old format
+                        elif (reminder.get('date') and reminder.get('time') and
+                              not reminder.get('sent', False)):
+                            # Parse old format
+                            date_str = reminder.get('date', '')
+                            time_str = reminder.get('time', '')
+                            
+                            if date_str and time_str:
+                                # Combine date and time
+                                datetime_str = f"{date_str} {time_str}"
+                                try:
+                                    # Parse the datetime string
+                                    reminder_datetime = datetime.datetime.strptime(datetime_str, '%d.%m.%Y %H:%M')
+                                    # Localize to default timezone
+                                    reminder_datetime = DEFAULT_TIMEZONE.localize(reminder_datetime)
+                                    
+                                    # Check if reminder should be sent (with 24-hour window)
+                                    if (reminder_datetime <= now and 
+                                        now - reminder_datetime < timedelta(hours=24)):
+                                        try:
+                                            # Send reminder message to user in the required format
+                                            title = reminder.get('title', 'Напоминание')
+                                            
+                                            message = f"⏰ Вы просили напомнить \"{title}\""
+                                            
+                                            # Create inline keyboard with reschedule and delete options
+                                            keyboard = [
+                                                [
+                                                    InlineKeyboardButton('Через час', callback_data=f'reminder_reschedule_one_hour_{reminder_id}'),
+                                                    InlineKeyboardButton('На завтра', callback_data=f'reminder_reschedule_tomorrow_{reminder_id}')
+                                                ],
+                                                [
+                                                    InlineKeyboardButton('Произвольно', callback_data=f'reminder_reschedule_custom_{reminder_id}'),
+                                                    InlineKeyboardButton('Удалить', callback_data=f'reminder_delete_{reminder_id}')
+                                                ]
+                                            ]
+                                            reply_markup = InlineKeyboardMarkup(keyboard)
+                                            
+                                            # Send message to user
+                                            await application.bot.send_message(
+                                                chat_id=int(user_id),
+                                                text=message,
+                                                reply_markup=reply_markup
+                                            )
+                                            
+                                            # Handle repeat logic
+                                            repeat = reminder.get('repeat', 'none')
+                                            if repeat != 'none':
+                                                # For repeating reminders, calculate next occurrence
+                                                next_time = calculate_next_occurrence(reminder_datetime, repeat)
+                                                if next_time:
+                                                    # Update scheduled time for next occurrence
+                                                    user_data[user_id]['reminders'][reminder_id]['scheduled_at'] = next_time.isoformat()
+                                                    # Convert old format to new format
+                                                    user_data[user_id]['reminders'][reminder_id]['date'] = ''
+                                                    user_data[user_id]['reminders'][reminder_id]['time'] = ''
+                                                    # Keep sent as False for next occurrence
+                                                    user_data[user_id]['reminders'][reminder_id]['sent'] = False
+                                                else:
+                                                    # If can't calculate next occurrence, mark as sent
+                                                    user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                            else:
+                                                # For non-repeating reminders, mark as sent
+                                                user_data[user_id]['reminders'][reminder_id]['sent'] = True
+                                                
+                                            save_user_data(user_data)
+                                            
+                                            logger.info(f"Sent pending reminder '{title}' to user {user_id} on startup")
+                                            reminders_processed = True
+                                        except Exception as e:
+                                            logger.error(f"Failed to send pending reminder to user {user_id}: {e}")
+                                except ValueError:
+                                    # Invalid date/time format
+                                    logger.error(f"Invalid date/time format for reminder {reminder_id} of user {user_id}")
+                    except Exception as e:
+                        logger.error(f"Error processing reminder {reminder_id} for user {user_id}: {e}")
+        
+        if reminders_processed:
+            logger.info("Finished processing pending reminders on startup")
+        else:
+            logger.info("No pending reminders found on startup")
+            
+    except Exception as e:
+        logger.error(f"Error in process_pending_reminders_on_startup: {e}")
+
+# Function to calculate next occurrence for repeating reminders
+def calculate_next_occurrence(current_time, repeat_type):
+    """Calculate next occurrence time for repeating reminders"""
+    import datetime
+    import pytz
+    
+    try:
+        # Default timezone
+        DEFAULT_TIMEZONE = pytz.timezone('Europe/Moscow')
+        
+        # Make sure current_time is timezone-aware
+        if current_time.tzinfo is None:
+            current_time = DEFAULT_TIMEZONE.localize(current_time)
+        
+        next_time = None
+        
+        if repeat_type == 'daily':
+            next_time = current_time + timedelta(days=1)
+        elif repeat_type == 'weekly':
+            next_time = current_time + timedelta(weeks=1)
+        elif repeat_type == 'monthly':
+            # Add one month
+            if current_time.month == 12:
+                next_time = current_time.replace(year=current_time.year + 1, month=1)
+            else:
+                next_time = current_time.replace(month=current_time.month + 1)
+        elif repeat_type == 'weekdays':
+            # Next weekday (Mon-Fri)
+            next_time = current_time + timedelta(days=1)
+            # Skip weekends
+            while next_time.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+                next_time += timedelta(days=1)
+        
+        return next_time
+    except Exception as e:
+        logger.error(f"Error calculating next occurrence: {e}")
+        return None
